@@ -16,6 +16,7 @@
     <PackageReference Include="Avalonia" Version="11.1.3" />
     <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.1.3" />
+    <PackageReference Include="CommunityToolkit.Maui" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.Maui.Core" Version="8.0.91" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.91" />

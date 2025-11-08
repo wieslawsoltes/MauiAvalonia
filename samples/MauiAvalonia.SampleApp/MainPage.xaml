@@ -30,6 +30,12 @@
                 SemanticProperties.Hint="Counts the number of times you click"
                 Clicked="OnCounterClicked"
                 HorizontalOptions="Fill" />
+
+            <Button
+                Text="Open TabbedPage Demo"
+                SemanticProperties.Hint="Navigates to the standalone TabbedPage sample (outside Shell)"
+                Clicked="OnNavigateToTabsClicked"
+                HorizontalOptions="Fill" />
         </VerticalStackLayout>
     </ScrollView>
 

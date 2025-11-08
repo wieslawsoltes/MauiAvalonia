@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,8 +8,12 @@ using Microsoft.Maui;
 using Microsoft.Maui.Avalonia.Navigation;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Controls.PlatformConfiguration;
+using Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific;
 using MauiRect = Microsoft.Maui.Graphics.Rect;
 using Microsoft.Maui.Platform;
+using Thickness = Microsoft.Maui.Thickness;
 
 namespace Microsoft.Maui.Avalonia.Handlers;
 
@@ -34,6 +39,9 @@ public class AvaloniaWindowHandler : ElementHandler<IWindow, AvaloniaWindowContr
 	{
 	}
 
+	IView? _currentContentView;
+	IAvaloniaNavigationRoot? _safeAreaNavigationRoot;
+
 	protected override AvaloniaWindowControl CreatePlatformElement()
 	{
 		if (MauiContext is MauiContext context &&
@@ -54,6 +62,7 @@ public class AvaloniaWindowHandler : ElementHandler<IWindow, AvaloniaWindowContr
 
 	protected override void DisconnectHandler(AvaloniaWindowControl platformView)
 	{
+		DetachSafeAreaMonitoring();
 		platformView.Opened -= OnOpened;
 		platformView.Closed -= OnClosed;
 	}
@@ -73,14 +82,18 @@ public class AvaloniaWindowHandler : ElementHandler<IWindow, AvaloniaWindowContr
 		if (navigationRoot is null || handler.MauiContext is null)
 			return;
 
+		handler.DetachSafeAreaMonitoring();
+
 		if (window.Content is IView view)
 		{
 			var control = view.ToAvaloniaControl(handler.MauiContext);
 			navigationRoot.SetContent(control);
+			handler.AttachSafeAreaMonitoring(view, navigationRoot);
 		}
 		else
 		{
 			navigationRoot.SetPlaceholder("No content assigned to the window.");
+			navigationRoot.SetContentPadding(new Thickness());
 		}
 	}
 
@@ -214,6 +227,69 @@ public class AvaloniaWindowHandler : ElementHandler<IWindow, AvaloniaWindowContr
 			return views;
 
 		return Array.Empty<IView?>();
+	}
+
+	void AttachSafeAreaMonitoring(IView view, IAvaloniaNavigationRoot navigationRoot)
+	{
+		_currentContentView = view;
+		_safeAreaNavigationRoot = navigationRoot;
+
+		if (_currentContentView is INotifyPropertyChanged npc)
+			npc.PropertyChanged += OnContentViewPropertyChanged;
+
+		_safeAreaNavigationRoot.SafeAreaChanged += OnNavigationRootSafeAreaChanged;
+
+		UpdateSafeAreaInsets();
+	}
+
+	void DetachSafeAreaMonitoring()
+	{
+		if (_currentContentView is INotifyPropertyChanged npc)
+			npc.PropertyChanged -= OnContentViewPropertyChanged;
+
+		if (_safeAreaNavigationRoot is not null)
+			_safeAreaNavigationRoot.SafeAreaChanged -= OnNavigationRootSafeAreaChanged;
+
+		_currentContentView = null;
+		_safeAreaNavigationRoot = null;
+	}
+
+	void OnContentViewPropertyChanged(object? sender, PropertyChangedEventArgs e) =>
+		UpdateSafeAreaInsets();
+
+	void OnNavigationRootSafeAreaChanged(object? sender, EventArgs e) =>
+		UpdateSafeAreaInsets();
+
+	void UpdateSafeAreaInsets()
+	{
+		if (_currentContentView is null || _safeAreaNavigationRoot is null)
+			return;
+
+		var insets = _safeAreaNavigationRoot.GetSafeAreaInsets();
+		ApplySafeAreaInsets(_currentContentView, insets);
+	}
+
+	void ApplySafeAreaInsets(IView view, Thickness insets)
+	{
+		if (_safeAreaNavigationRoot is null)
+			return;
+
+		if (view is Microsoft.Maui.Controls.Page page)
+		{
+			var safeAreaInsets = insets;
+			if (page is ISafeAreaView safeAreaView && safeAreaView.IgnoreSafeArea)
+				safeAreaInsets = new Thickness();
+
+			page.On<iOS>().SetSafeAreaInsets(safeAreaInsets);
+			_safeAreaNavigationRoot.SetContentPadding(new Thickness());
+			return;
+		}
+
+		var padding = insets;
+		if (view is ISafeAreaView layoutSafeArea && layoutSafeArea.IgnoreSafeArea)
+			padding = new Thickness();
+
+		_safeAreaNavigationRoot.SetContentPadding(padding);
 	}
 
 	void OnOpened(object? sender, System.EventArgs e) => VirtualView?.Activated();

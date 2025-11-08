@@ -20,4 +20,19 @@ public partial class MainPage : ContentPage
 
 		SemanticScreenReader.Announce(CounterBtn.Text);
 	}
+
+	private async void OnNavigateToTabsClicked(object? sender, EventArgs e)
+	{
+		if (Shell.Current is null)
+			return;
+
+		try
+		{
+			await Shell.Current.GoToAsync(nameof(TabsPage));
+		}
+		catch (Exception ex)
+		{
+			System.Diagnostics.Debug.WriteLine($"Navigation to {nameof(TabsPage)} failed: {ex}");
+		}
+	}
 }

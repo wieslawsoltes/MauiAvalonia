@@ -13,7 +13,9 @@ public class AvaloniaGridLayoutHandler : AvaloniaPanelLayoutHandler<IGridLayout,
 		new PropertyMapper<IGridLayout, AvaloniaGridLayoutHandler>(ViewHandler.ViewMapper)
 		{
 			[nameof(IGridLayout.RowDefinitions)] = MapRowDefinitions,
-			[nameof(IGridLayout.ColumnDefinitions)] = MapColumnDefinitions
+			[nameof(IGridLayout.ColumnDefinitions)] = MapColumnDefinitions,
+			[nameof(IGridLayout.RowSpacing)] = MapSpacing,
+			[nameof(IGridLayout.ColumnSpacing)] = MapSpacing
 		};
 
 	public AvaloniaGridLayoutHandler()
@@ -46,6 +48,7 @@ public class AvaloniaGridLayoutHandler : AvaloniaPanelLayoutHandler<IGridLayout,
 			return;
 
 		PlatformView.UpdateDefinitions(VirtualView);
+		PlatformView.UpdateSpacing(VirtualView);
 	}
 
 	static void MapRowDefinitions(AvaloniaGridLayoutHandler handler, IGridLayout layout) =>
@@ -53,6 +56,9 @@ public class AvaloniaGridLayoutHandler : AvaloniaPanelLayoutHandler<IGridLayout,
 
 	static void MapColumnDefinitions(AvaloniaGridLayoutHandler handler, IGridLayout layout) =>
 		handler.PlatformView?.UpdateDefinitions(layout);
+
+	static void MapSpacing(AvaloniaGridLayoutHandler handler, IGridLayout layout) =>
+		handler.PlatformView?.UpdateSpacing(layout);
 }
 
 public sealed class AvaloniaGridPanel : AvaloniaGrid
@@ -79,5 +85,11 @@ public sealed class AvaloniaGridPanel : AvaloniaGrid
 				Width = column.Width.ToAvalonia()
 			});
 		}
+	}
+
+	public void UpdateSpacing(IGridLayout layout)
+	{
+		// Avalonia 11.1 does not expose row/column spacing on Grid.
+		// TODO: emulate spacing by injecting padding rows once supported.
 	}
 }

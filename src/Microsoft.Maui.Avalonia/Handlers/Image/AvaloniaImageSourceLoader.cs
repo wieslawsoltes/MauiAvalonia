@@ -43,11 +43,8 @@ internal static class AvaloniaImageSourceLoader
 			}
 		}
 
-		var resolved = Path.IsPathRooted(path)
-			? path
-			: Path.Combine(AppContext.BaseDirectory, path);
-
-		if (!File.Exists(resolved))
+		var resolved = ResolveRelativePath(path);
+		if (resolved is null || !File.Exists(resolved))
 			return null;
 
 		await using var fileStream = File.OpenRead(resolved);
@@ -134,5 +131,39 @@ internal static class AvaloniaImageSourceLoader
 		return uri.Scheme.Equals("avares", StringComparison.OrdinalIgnoreCase) ||
 			uri.Scheme.Equals("resm", StringComparison.OrdinalIgnoreCase) ||
 			uri.Scheme.Equals("ms-appx", StringComparison.OrdinalIgnoreCase);
+	}
+
+	static string? ResolveRelativePath(string path)
+	{
+		if (Path.IsPathRooted(path))
+			return path;
+
+		var normalized = path.Replace('/', Path.DirectorySeparatorChar);
+		var baseDir = AppContext.BaseDirectory;
+
+		static bool TryResolve(string candidate, out string fullPath)
+		{
+			fullPath = candidate;
+			return File.Exists(candidate);
+		}
+
+		if (TryResolve(Path.Combine(baseDir, normalized), out var direct))
+			return direct;
+
+		var resourceCandidates = new[]
+		{
+			Path.Combine(baseDir, Path.GetFileName(normalized) ?? normalized),
+			Path.Combine(baseDir, "Resources", normalized),
+			Path.Combine(baseDir, "Resources", "Images", normalized),
+			Path.Combine(baseDir, "Resources", "Images", Path.GetFileName(normalized) ?? normalized)
+		};
+
+		foreach (var candidate in resourceCandidates)
+		{
+			if (TryResolve(candidate, out var resolved))
+				return resolved;
+		}
+
+		return null;
 	}
 }

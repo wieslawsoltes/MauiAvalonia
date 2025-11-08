@@ -23,6 +23,8 @@ internal static class GestureExtensions
 		CreatePointerDelegate("SendPointerPressed");
 	static readonly Action<PointerGestureRecognizer, View, Func<IElement?, Point?>?, PlatformPointerEventArgs?, ButtonsMask> PointerReleasedProxy =
 		CreatePointerDelegate("SendPointerReleased");
+	static readonly Action<TapGestureRecognizer, View, Func<IElement?, Point?>?> TapProxy =
+		CreateTapDelegate();
 
 	static readonly Func<DragGestureRecognizer, View, Func<IElement?, Point?>?, PlatformDragStartingEventArgs?, DragStartingEventArgs> DragStartingProxy =
 		CreateDragStartingDelegate();
@@ -63,6 +65,9 @@ internal static class GestureExtensions
 
 	public static void SendPointerReleased(this PointerGestureRecognizer recognizer, View sender, Func<IElement?, Point?>? getPosition, PlatformPointerEventArgs? platformArgs = null, ButtonsMask button = ButtonsMask.Primary) =>
 		PointerReleasedProxy(recognizer, sender, getPosition, platformArgs, button);
+
+	public static void SendTapped(this TapGestureRecognizer recognizer, View sender, Func<IElement?, Point?>? getPosition = null) =>
+		TapProxy(recognizer, sender, getPosition);
 
 	public static DragStartingEventArgs SendDragStarting(this DragGestureRecognizer recognizer, View element, Func<IElement?, Point?>? getPosition = null, PlatformDragStartingEventArgs? platformArgs = null) =>
 		DragStartingProxy(recognizer, element, getPosition, platformArgs);
@@ -118,5 +123,14 @@ internal static class GestureExtensions
 			?? throw new MissingMemberException(typeof(DropGestureRecognizer).FullName, name);
 		return (Func<DropGestureRecognizer, DropEventArgs, Task>)
 			Delegate.CreateDelegate(typeof(Func<DropGestureRecognizer, DropEventArgs, Task>), method);
+	}
+
+	static Action<TapGestureRecognizer, View, Func<IElement?, Point?>?> CreateTapDelegate()
+	{
+		const string name = "SendTapped";
+		var method = typeof(TapGestureRecognizer).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)
+			?? throw new MissingMemberException(typeof(TapGestureRecognizer).FullName, name);
+		return (Action<TapGestureRecognizer, View, Func<IElement?, Point?>?>)
+			Delegate.CreateDelegate(typeof(Action<TapGestureRecognizer, View, Func<IElement?, Point?>?>), method);
 	}
 }

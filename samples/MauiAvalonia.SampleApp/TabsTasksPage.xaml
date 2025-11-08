@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="MauiAvalonia.SampleApp.TabsTasksPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Tasks">
+
+    <CollectionView>
+        <CollectionView.Header>
+            <Label Text="Shell Tab Tasks" Padding="24,18,24,6" FontAttributes="Bold" />
+        </CollectionView.Header>
+        <CollectionView.ItemsSource>
+            <x:Array Type="{x:Type x:String}">
+                <x:String>Create native TabControl handler</x:String>
+                <x:String>Surface Shell tabs through Avalonia chrome</x:String>
+                <x:String>Keep Shell toolbar items in sync with tab selection</x:String>
+                <x:String>Verify SelectionChanged events and route updates</x:String>
+            </x:Array>
+        </CollectionView.ItemsSource>
+    </CollectionView>
+
+</ContentPage>

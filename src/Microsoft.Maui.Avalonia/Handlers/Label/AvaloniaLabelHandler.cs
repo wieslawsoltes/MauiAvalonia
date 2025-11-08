@@ -98,7 +98,7 @@ public class AvaloniaLabelHandler : AvaloniaViewHandler<ILabel, TextBlock>, ILab
 		if (handler.PlatformView is null)
 			return;
 
-		handler.PlatformView.Padding = label.Padding.ToAvalonia();
+		handler.PlatformView.Padding = Microsoft.Maui.Avalonia.Platform.ThicknessExtensions.ToAvalonia(label.Padding);
 	}
 
 	static void MapTextDecorations(AvaloniaLabelHandler handler, ILabel label)

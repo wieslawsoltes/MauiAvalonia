@@ -99,7 +99,7 @@ public class AvaloniaRadioButtonHandler : AvaloniaViewHandler<IRadioButton, Aval
 		if (handler.PlatformView is null)
 			return;
 
-		handler.PlatformView.Padding = radioButton.Padding.ToAvalonia();
+		handler.PlatformView.Padding = Microsoft.Maui.Avalonia.Platform.ThicknessExtensions.ToAvalonia(radioButton.Padding);
 	}
 
 	static void MapStrokeThickness(AvaloniaRadioButtonHandler handler, IRadioButton radioButton)

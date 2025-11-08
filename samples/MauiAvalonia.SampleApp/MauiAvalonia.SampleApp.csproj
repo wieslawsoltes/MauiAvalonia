@@ -69,4 +69,18 @@
 		<ProjectReference Include="..\..\src\Microsoft.Maui.Avalonia\Microsoft.Maui.Avalonia.csproj" />
 	</ItemGroup>
 
+	<Target Name="CopyAvaloniaMauiAssets"
+	        AfterTargets="Build"
+	        Condition="$([System.String]::Copy('$(TargetFramework)').Contains('-')) == false">
+		<ItemGroup>
+			<AvaloniaMauiAsset Include="@(MauiImage)">
+				<SourcePath>%(FullPath)</SourcePath>
+				<DestinationPath>$(OutDir)%(Identity)</DestinationPath>
+			</AvaloniaMauiAsset>
+		</ItemGroup>
+		<Copy SourceFiles="@(AvaloniaMauiAsset->'%(SourcePath)')"
+		      DestinationFiles="@(AvaloniaMauiAsset->'%(DestinationPath)')"
+		      SkipUnchangedFiles="true" />
+	</Target>
+
 </Project>

@@ -66,6 +66,8 @@ public abstract class AvaloniaMauiApplication : AvaloniaApplication, IPlatformAp
 			_themeSubscribed = true;
 		}
 
+		NotifyAppThemeChanged();
+
 		_initialized = true;
 	}
 
@@ -99,8 +101,14 @@ public abstract class AvaloniaMauiApplication : AvaloniaApplication, IPlatformAp
 	protected IMauiContext ApplicationContext =>
 		_applicationContext ?? throw new InvalidOperationException("The MAUI application context has not been created.");
 
-	void OnActualThemeVariantChanged(object? sender, EventArgs e) =>
+	void OnActualThemeVariantChanged(object? sender, EventArgs e)
+	{
+		NotifyAppThemeChanged();
 		LifecycleInvoker.Invoke<AvaloniaLifecycle.OnThemeChanged>(_services, del => del(this, e));
+	}
+
+	void NotifyAppThemeChanged() =>
+		_application?.ThemeChanged();
 
 	void InitializeApplicationHandler()
 	{

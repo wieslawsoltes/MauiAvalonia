@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Microsoft.Maui.Avalonia.Platform;
 using AvaloniaWindow = Avalonia.Controls.Window;
 using AvaloniaButton = Avalonia.Controls.Button;
 using AvaloniaBorder = Avalonia.Controls.Border;
@@ -14,6 +15,7 @@ using AvaloniaTextBlock = Avalonia.Controls.TextBlock;
 using AvaloniaImage = Avalonia.Controls.Image;
 using AvaloniaPoint = Avalonia.Point;
 using MauiRect = Microsoft.Maui.Graphics.Rect;
+using Thickness = Microsoft.Maui.Thickness;
 
 namespace Microsoft.Maui.Avalonia.Navigation;
 
@@ -47,9 +49,12 @@ internal sealed class AvaloniaNavigationRoot : IAvaloniaNavigationRoot
 			HorizontalAlignment = AvaloniaHorizontalAlignment.Center,
 			VerticalAlignment = AvaloniaVerticalAlignment.Center
 		});
+		SetContentPadding(new Thickness());
 	}
 
 	public void SetContent(Control? control) => _rootView.SetContent(control);
+
+	public void SetContentPadding(Thickness padding) => _rootView.SetContentPadding(padding);
 
 	public void SetToolbar(Control? control) => _rootView.SetToolbar(control);
 
@@ -62,6 +67,14 @@ internal sealed class AvaloniaNavigationRoot : IAvaloniaNavigationRoot
 
 	public void SetDragRectangles(IReadOnlyList<MauiRect> rectangles) =>
 		_rootView.SetDragRectangles(rectangles);
+
+	public event EventHandler? SafeAreaChanged
+	{
+		add => _rootView.SafeAreaChanged += value;
+		remove => _rootView.SafeAreaChanged -= value;
+	}
+
+	public Thickness GetSafeAreaInsets() => _rootView.SafeAreaInsets;
 }
 
 internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
@@ -87,6 +100,10 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 	readonly List<MauiRect> _dragRectangles = new();
 	readonly HashSet<Control> _passthroughControls = new();
 	string? _title;
+	Thickness _safeAreaInsets = new();
+
+	public event EventHandler? SafeAreaChanged;
+	public Thickness SafeAreaInsets => _safeAreaInsets;
 
 	public AvaloniaNavigationRootView()
 	{
@@ -187,14 +204,22 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 			Child = _contentHost,
 			Background = Brushes.Transparent
 		};
-		_contentWrapper.SetValue(AvaloniaGrid.RowProperty, 3);
+		_contentWrapper.SetValue(AvaloniaGrid.RowProperty, 0);
+		_contentWrapper.SetValue(AvaloniaGrid.RowSpanProperty, 5);
+		_contentWrapper.ZIndex = 0;
 
 		_dragVisualOverlay = new Canvas
 		{
 			IsHitTestVisible = false,
 			Opacity = 0
 		};
-		_dragVisualOverlay.SetValue(AvaloniaGrid.RowProperty, 3);
+		_dragVisualOverlay.SetValue(AvaloniaGrid.RowProperty, 0);
+		_dragVisualOverlay.SetValue(AvaloniaGrid.RowSpanProperty, 5);
+		_dragVisualOverlay.ZIndex = 20;
+
+		_titleBarBorder.ZIndex = 10;
+		_menuBorder.ZIndex = 10;
+		_toolbarBorder.ZIndex = 10;
 
 		Children.Add(_titleBarBorder);
 		Children.Add(_menuBorder);
@@ -204,9 +229,11 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 
 		UpdateToolbarVisibility();
 		UpdateMenuVisibility();
+		_titleBarBorder.IsVisible = false;
 
 		PointerPressed += OnPointerPressed;
 		DoubleTapped += OnPointerDoubleTapped;
+		LayoutUpdated += (_, __) => UpdateSafeAreaInsets();
 	}
 
 	public void AttachWindow(AvaloniaWindow window)
@@ -234,16 +261,23 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 		_contentHost.Content = control;
 	}
 
+	public void SetContentPadding(Thickness padding)
+	{
+		_contentWrapper.Padding = padding.ToAvalonia();
+	}
+
 	public void SetToolbar(Control? control)
 	{
 		_toolbarHost.Content = control;
 		UpdateToolbarVisibility();
+		UpdateSafeAreaInsets();
 	}
 
 	public void SetMenu(Control? control)
 	{
 		_menuHost.Content = control;
 		UpdateMenuVisibility();
+		UpdateSafeAreaInsets();
 	}
 
 	public void SetTitle(string? title)
@@ -271,6 +305,7 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 
 		_titleBarHost.Content = control ?? CreateDefaultTitlePresenter();
 		UpdateChromeState();
+		UpdateSafeAreaInsets();
 	}
 
 	public void SetDragRectangles(IReadOnlyList<MauiRect> rectangles)
@@ -321,11 +356,13 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 	void UpdateMenuVisibility()
 	{
 		_menuBorder.IsVisible = _menuHost.Content != null;
+		UpdateSafeAreaInsets();
 	}
 
 	void UpdateToolbarVisibility()
 	{
 		_toolbarBorder.IsVisible = _toolbarHost.Content != null;
+		UpdateSafeAreaInsets();
 	}
 
 	void ToggleWindowState()
@@ -362,7 +399,9 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 		_window.ExtendClientAreaTitleBarHeightHint = _titleBarBorder.Bounds.Height > 0
 			? _titleBarBorder.Bounds.Height
 			: 36;
+		_titleBarBorder.IsVisible = true;
 		_customChromeActive = true;
+		UpdateSafeAreaInsets();
 	}
 
 	void DisableCustomChrome()
@@ -372,7 +411,9 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 
 		_window.ExtendClientAreaToDecorationsHint = false;
 		_window.SystemDecorations = SystemDecorations.Full;
+		_titleBarBorder.IsVisible = false;
 		_customChromeActive = false;
+		UpdateSafeAreaInsets();
 	}
 
 	void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -467,5 +508,26 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 			return;
 
 		_maximizeButton.Content = _window.WindowState == global::Avalonia.Controls.WindowState.Maximized ? "🗗" : "⬜";
+	}
+
+	void UpdateSafeAreaInsets()
+	{
+		double topInset = 0;
+
+		if (_titleBarBorder.IsVisible)
+			topInset += _titleBarBorder.Bounds.Height;
+
+		if (_menuBorder.IsVisible)
+			topInset += _menuBorder.Bounds.Height;
+
+		if (_toolbarBorder.IsVisible)
+			topInset += _toolbarBorder.Bounds.Height;
+
+		var newInsets = new Thickness(0, topInset, 0, 0);
+		if (!_safeAreaInsets.Equals(newInsets))
+		{
+			_safeAreaInsets = newInsets;
+			SafeAreaChanged?.Invoke(this, EventArgs.Empty);
+		}
 	}
 }

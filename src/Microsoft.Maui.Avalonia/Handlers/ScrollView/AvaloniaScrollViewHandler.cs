@@ -149,7 +149,7 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 			VerticalAlignment = AvaloniaVerticalAlignment.Stretch
 		};
 
-		_contentHost.Padding = VirtualView.Padding.ToAvalonia();
+		_contentHost.Padding = Microsoft.Maui.Avalonia.Platform.ThicknessExtensions.ToAvalonia(VirtualView.Padding);
 		_contentHost.Child = control;
 
 		PlatformView.Content = _contentHost;
@@ -160,7 +160,7 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 		if (_contentHost is null || VirtualView is null)
 			return;
 
-		_contentHost.Padding = VirtualView.Padding.ToAvalonia();
+		_contentHost.Padding = Microsoft.Maui.Avalonia.Platform.ThicknessExtensions.ToAvalonia(VirtualView.Padding);
 	}
 
 	void OnScrollChanged(object? sender, ScrollChangedEventArgs e)

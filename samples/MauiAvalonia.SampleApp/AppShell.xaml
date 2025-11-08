@@ -6,9 +6,25 @@
     xmlns:local="clr-namespace:MauiAvalonia.SampleApp"
     Title="MauiAvalonia.SampleApp">
 
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
+    <TabBar>
+        <ShellContent
+            Title="Home"
+            ContentTemplate="{DataTemplate local:MainPage}"
+            Route="MainPage" />
+
+        <ShellContent
+            Title="Overview"
+            Icon="dotnet_bot.png"
+            ContentTemplate="{DataTemplate local:TabsOverviewPage}" />
+
+        <ShellContent
+            Title="Tasks"
+            Icon="dotnet_bot.png"
+            ContentTemplate="{DataTemplate local:TabsTasksPage}" />
+
+        <ShellContent
+            Title="Notes"
+            ContentTemplate="{DataTemplate local:TabsNotesPage}" />
+    </TabBar>
 
 </Shell>

@@ -26,6 +26,7 @@ internal static class AvaloniaViewHandlerMapper
 		ViewHandler.ViewMapper.AppendToMapping<IView, IViewHandler>(nameof(IView.AutomationId), MapAutomationId);
 		ViewHandler.ViewMapper.AppendToMapping<IView, IViewHandler>(nameof(IView.InputTransparent), MapInputTransparent);
 		ViewHandler.ViewMapper.AppendToMapping<IView, IViewHandler>(nameof(IView.Semantics), MapSemantics);
+		ViewHandler.ViewMapper.AppendToMapping<IView, IViewHandler>(nameof(IContextFlyoutElement.ContextFlyout), MapContextFlyout);
 		ViewHandler.ViewMapper.AppendToMapping<IView, IViewHandler>(nameof(IToolbarElement.Toolbar), MapToolbarElement);
 		ViewHandler.ViewCommandMapper.AppendToMapping<IView, IViewHandler>(nameof(IView.Focus), MapFocus);
 		ViewHandler.ViewCommandMapper.AppendToMapping<IView, IViewHandler>(nameof(IView.Unfocus), MapUnfocus);
@@ -65,6 +66,33 @@ internal static class AvaloniaViewHandlerMapper
 	{
 		if (handler?.PlatformView is Control control)
 			control.ApplySemantics(view);
+	}
+
+	static void MapContextFlyout(IViewHandler handler, IView view)
+	{
+		if (handler?.PlatformView is not Control control)
+			return;
+
+		if (handler.MauiContext is null)
+		{
+			control.ContextMenu = null;
+			return;
+		}
+
+		if (view is not IContextFlyoutElement flyoutElement || flyoutElement.ContextFlyout is null)
+		{
+			control.ContextMenu = null;
+			return;
+		}
+
+		if (flyoutElement.ContextFlyout is IMenuFlyout menuFlyout)
+		{
+			control.ContextMenu = AvaloniaMenuBuilder.BuildContextMenu(menuFlyout, handler.MauiContext);
+		}
+		else
+		{
+			control.ContextMenu = null;
+		}
 	}
 
 	static void MapToolbarElement(IViewHandler handler, IView view)

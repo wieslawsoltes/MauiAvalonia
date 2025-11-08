@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="MauiAvalonia.SampleApp.TabsOverviewPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Overview">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="12" Padding="24,18">
+            <Label Text="Tabbed sample (Shell TabBar)" FontAttributes="Bold" FontSize="18" />
+            <Label Text="This tab is rendered from a Shell TabBar entry, so it shares the same NavigationPage stack and toolbars as the rest of the app." />
+            <Label Text="Switch tabs from the Shell bar to see collection data, notes, and other content sections." />
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

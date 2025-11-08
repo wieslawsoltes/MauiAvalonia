@@ -101,7 +101,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		if (handler.PlatformView is null)
 			return;
 
-		handler.PlatformView.Padding = button.Padding.ToAvalonia();
+		handler.PlatformView.Padding = Microsoft.Maui.Avalonia.Platform.ThicknessExtensions.ToAvalonia(button.Padding);
 	}
 
 	static void MapCornerRadius(AvaloniaButtonHandler handler, IButton button)
@@ -109,7 +109,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		if (handler.PlatformView is null)
 			return;
 
-		handler.PlatformView.CornerRadius = button.CornerRadius.ToAvalonia();
+		handler.PlatformView.CornerRadius = Microsoft.Maui.Avalonia.Internal.AvaloniaConversionExtensions.ToAvalonia(button.CornerRadius);
 	}
 
 	static void MapStrokeThickness(AvaloniaButtonHandler handler, IButton button)

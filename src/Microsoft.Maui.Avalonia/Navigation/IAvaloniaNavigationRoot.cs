@@ -1,3 +1,4 @@
+using System;
 using Avalonia.Controls;
 using Microsoft.Maui.Graphics;
 using AvaloniaWindow = Avalonia.Controls.Window;
@@ -15,6 +16,8 @@ public interface IAvaloniaNavigationRoot
 
 	void SetContent(Control? control);
 
+	void SetContentPadding(Thickness padding);
+
 	void SetToolbar(Control? control);
 
 	void SetMenu(Control? control);
@@ -24,4 +27,8 @@ public interface IAvaloniaNavigationRoot
 	void SetTitleBar(Control? control, IReadOnlyList<Control>? passthroughElements);
 
 	void SetDragRectangles(IReadOnlyList<Rect> rectangles);
+
+	event EventHandler? SafeAreaChanged;
+
+	Thickness GetSafeAreaInsets();
 }
