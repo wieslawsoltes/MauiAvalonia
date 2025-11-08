@@ -10,6 +10,7 @@ namespace Microsoft.Maui.Avalonia.Handlers;
 
 public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitView>, IFlyoutViewHandler
 {
+	readonly AvaloniaShellFlyoutPresenter _defaultShellFlyoutPresenter = new();
 	Shell? _trackedShell;
 	IShellController? _shellController;
 
@@ -41,15 +42,7 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 			return;
 
 		platformHandler.EnsureShellSubscriptions(view);
-
-		if (view.Flyout is IView flyoutView)
-		{
-			platformHandler.PlatformView.Pane = flyoutView.ToAvaloniaControl(handler.MauiContext);
-		}
-		else
-		{
-			platformHandler.PlatformView.Pane = null;
-		}
+		platformHandler.PlatformView.Pane = platformHandler.ResolveFlyoutPane(view);
 	}
 
 	static void MapDetail(IFlyoutViewHandler handler, IFlyoutView view)
@@ -113,6 +106,23 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 		return shellContent.Content as IView;
 	}
 
+	Control? ResolveFlyoutPane(IFlyoutView view)
+	{
+		if (MauiContext is null)
+			return null;
+
+		if (view.Flyout is IView flyoutView)
+			return flyoutView.ToAvaloniaControl(MauiContext);
+
+		if (_trackedShell is not null)
+		{
+			_defaultShellFlyoutPresenter.AttachShell(_trackedShell, _shellController);
+			return _defaultShellFlyoutPresenter;
+		}
+
+		return null;
+	}
+
 	void EnsureShellSubscriptions(IFlyoutView view)
 	{
 		if (_trackedShell is not null && ReferenceEquals(_trackedShell, view))
@@ -125,13 +135,15 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 
 		_trackedShell = shell;
 		shell.PropertyChanged += OnShellPropertyChanged;
-
+		
 		if (shell is IShellController controller)
 		{
 			_shellController = controller;
 			controller.StructureChanged += OnShellStructureChanged;
 			controller.FlyoutItemsChanged += OnShellStructureChanged;
 		}
+
+		_defaultShellFlyoutPresenter.AttachShell(shell, _shellController);
 	}
 
 	void ResetShellSubscriptions()
@@ -148,6 +160,8 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 			_shellController.FlyoutItemsChanged -= OnShellStructureChanged;
 			_shellController = null;
 		}
+
+		_defaultShellFlyoutPresenter.AttachShell(null, null);
 	}
 
 	void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -160,6 +174,7 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 			e.PropertyName == "CurrentPage")
 		{
 			MapDetail(this, _trackedShell);
+			_defaultShellFlyoutPresenter.UpdateSelection();
 		}
 	}
 
@@ -169,6 +184,7 @@ public sealed class AvaloniaFlyoutViewHandler : ViewHandler<IFlyoutView, SplitVi
 			return;
 
 		MapDetail(this, _trackedShell);
+		_defaultShellFlyoutPresenter.UpdateItems();
 	}
 
 	protected override void DisconnectHandler(SplitView platformView)

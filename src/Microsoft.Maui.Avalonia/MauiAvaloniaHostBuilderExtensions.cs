@@ -6,6 +6,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.Accessibility;
 using Microsoft.Maui.Animations;
 using Microsoft.Maui.ApplicationModel.DataTransfer;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Avalonia.Animations;
 using Microsoft.Maui.Avalonia.ApplicationModel;
 using Microsoft.Maui.Avalonia.Devices;
@@ -42,6 +43,14 @@ public static class MauiAvaloniaHostBuilderExtensions
 		builder.Services.TryAddSingleton<IAvaloniaWindowHost, AvaloniaWindowHost>();
 		builder.Services.TryAddSingleton<IDeviceDisplay, AvaloniaDeviceDisplay>();
 		builder.Services.TryAddSingleton<IDispatcherProvider, AvaloniaDispatcherProvider>();
+
+		var deviceInfo = new AvaloniaDeviceInfo();
+		AvaloniaDeviceInfo.TryRegisterAsDefault(deviceInfo);
+		builder.Services.TryAddSingleton<IDeviceInfo>(deviceInfo);
+
+		var appInfo = new AvaloniaAppInfo();
+		AvaloniaAppInfo.TryRegisterAsDefault(appInfo);
+		builder.Services.TryAddSingleton<IAppInfo>(appInfo);
 		var clipboard = new AvaloniaClipboard();
 		AvaloniaClipboard.TryRegisterAsDefault(clipboard);
 		builder.Services.TryAddSingleton<IClipboard>(clipboard);

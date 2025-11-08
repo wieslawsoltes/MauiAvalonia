@@ -61,6 +61,7 @@ Even with the milestones above, the Avalonia backend still trails the Android/iO
 - [ ] Bridge MAUI Essentials APIs to Avalonia or desktop equivalents: AppActions, Browser, Clipboard rich formats, Email/Sms, FilePicker/FolderPicker, Launcher, MediaPicker, Permissions, Preferences, SecureStorage, Share, Vibration, Geolocation, Geocoding, Connectivity, DeviceInformation, Haptics, Speech, and Sensors.
 - [ ] Provide fallbacks/feature flags where Avalonia or desktop OS lacks primitives, and document limitations clearly.
 - [ ] Flesh out accessibility: semantics tree export, focus visuals, screen reader hints, text scaling, and high-contrast theme propagation.
+- [x] Supply desktop-aware `DeviceInfo` and `AppInfo` implementations so MAUI Essentials APIs return correct model/OS/app metadata on the Avalonia host.
 
 ### 6.4 Input, Gestures, and Drag/Drop
 - [ ] Finish gesture routing: pointer pressed/moved/released events, hover, pinch, pan, swipe, long-press, double-tap, and drag gestures must raise the same recognizer callbacks as existing backends.
