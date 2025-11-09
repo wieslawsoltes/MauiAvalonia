@@ -32,7 +32,8 @@ internal static class AvaloniaToolbarMapper
 
 	static void MapTitle(IToolbarHandler handler, IToolbar toolbar)
 	{
-		GetPlatformToolbar(handler)?.UpdateTitle(toolbar);
+		if (GetPlatformToolbar(handler) is AvaloniaToolbar platformToolbar && toolbar is Toolbar controlsToolbar)
+			platformToolbar.UpdateTitle(controlsToolbar);
 	}
 
 	static void MapToolbarItems(IToolbarHandler handler, IToolbar toolbar)

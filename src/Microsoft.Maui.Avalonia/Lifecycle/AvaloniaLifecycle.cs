@@ -30,6 +30,15 @@ public static class AvaloniaLifecycle
 	/// <summary>Raised after an Avalonia <see cref="Window"/> closes.</summary>
 	public delegate void OnWindowDestroyed(AvaloniaApplication application, AvaloniaWindow window);
 
+	/// <summary>Raised when an Avalonia <see cref="Window"/> becomes active.</summary>
+	public delegate void OnWindowActivated(AvaloniaApplication application, AvaloniaWindow window);
+
+	/// <summary>Raised when an Avalonia <see cref="Window"/> loses activation.</summary>
+	public delegate void OnWindowDeactivated(AvaloniaApplication application, AvaloniaWindow window);
+
+	/// <summary>Raised when an Avalonia <see cref="Window"/> reports a theme variant change.</summary>
+	public delegate void OnWindowThemeChanged(AvaloniaApplication application, AvaloniaWindow window, EventArgs args);
+
 	/// <summary>Raised when the application's <see cref="Application.ActualThemeVariant"/> changes.</summary>
 	public delegate void OnThemeChanged(AvaloniaApplication application, EventArgs args);
 }

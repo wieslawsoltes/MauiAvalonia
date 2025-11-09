@@ -14,6 +14,7 @@ internal sealed class AvaloniaStackNavigationManager
 {
 	static readonly TimeSpan DefaultTransitionDuration = TimeSpan.FromMilliseconds(200);
 	readonly Dictionary<IView, Control> _realizedViews = new();
+	readonly List<IView> _previousNonModalStack = new();
 
 	IReadOnlyList<IView> _currentStack = Array.Empty<IView>();
 	IStackNavigation? _navigationView;
@@ -23,6 +24,7 @@ internal sealed class AvaloniaStackNavigationManager
 	Panel? _modalLayer;
 	IMauiContext? _mauiContext;
 	IPageTransition _defaultTransition = new CrossFade(DefaultTransitionDuration);
+	IPageTransition? _slideTransition;
 
 	public void Connect(IStackNavigation navigationView, ContentControl presenter, IMauiContext? context)
 	{
@@ -37,6 +39,7 @@ internal sealed class AvaloniaStackNavigationManager
 		ClearHostContent();
 		_realizedViews.Clear();
 		_currentStack = Array.Empty<IView>();
+		_previousNonModalStack.Clear();
 		_navigationView = null;
 		_presenter = null;
 		_transitionHost = null;
@@ -58,12 +61,17 @@ internal sealed class AvaloniaStackNavigationManager
 		if (_mauiContext is null)
 			return;
 
+		var nonModalStack = ExtractNonModalStack(_currentStack);
+		var animationKind = DetermineAnimation(_previousNonModalStack, nonModalStack, request.Animated);
+		_previousNonModalStack.Clear();
+		_previousNonModalStack.AddRange(nonModalStack);
+
 		var baseView = ResolveBaseView(_currentStack, out var modalViews);
 		if (baseView is not null)
 		{
 			var control = GetOrCreateControl(baseView);
 			var animateBase = request.Animated && modalViews.Count == 0;
-			ShowBaseControl(control, animateBase);
+			ShowBaseControl(control, animationKind, animateBase);
 		}
 
 		UpdateModalOverlays(modalViews);
@@ -127,20 +135,37 @@ internal sealed class AvaloniaStackNavigationManager
 		return control;
 	}
 
-	void ShowBaseControl(Control control, bool animated)
+	void ShowBaseControl(Control control, NavigationAnimationKind animationKind, bool allowAnimation)
 	{
-		if (_transitionHost is not null)
+		if (_transitionHost is null)
+			return;
+
+		var previousTransition = _transitionHost.PageTransition;
+		var previousReverse = _transitionHost.IsTransitionReversed;
+
+		if (!allowAnimation || animationKind == NavigationAnimationKind.None)
 		{
-			var transition = _transitionHost.PageTransition;
-
-			if (!animated)
-				_transitionHost.PageTransition = null;
-
+			_transitionHost.PageTransition = null;
+			_transitionHost.IsTransitionReversed = false;
 			_transitionHost.Content = control;
-
-			if (!animated)
-				_transitionHost.PageTransition = transition;
+			_transitionHost.PageTransition = previousTransition;
+			_transitionHost.IsTransitionReversed = previousReverse;
+			return;
 		}
+
+		var transition = animationKind switch
+		{
+			NavigationAnimationKind.Push => _slideTransition ??= CreateSlideTransition(),
+			NavigationAnimationKind.Pop => _slideTransition ??= CreateSlideTransition(),
+			NavigationAnimationKind.Replace => _defaultTransition,
+			_ => null
+		};
+
+		_transitionHost.PageTransition = transition ?? _defaultTransition;
+		_transitionHost.IsTransitionReversed = animationKind == NavigationAnimationKind.Pop;
+		_transitionHost.Content = control;
+		_transitionHost.PageTransition = previousTransition;
+		_transitionHost.IsTransitionReversed = previousReverse;
 	}
 
 	void RecycleStaleViews(IReadOnlyList<IView> liveStack)
@@ -194,6 +219,68 @@ internal sealed class AvaloniaStackNavigationManager
 	static bool IsModalView(IView view) =>
 		view is Page page && page.Navigation?.ModalStack?.Contains(page) == true;
 
+	static List<IView> ExtractNonModalStack(IReadOnlyList<IView> stack)
+	{
+		var result = new List<IView>();
+
+		foreach (var view in stack)
+		{
+			if (IsModalView(view))
+				break;
+
+			result.Add(view);
+		}
+
+		if (result.Count == 0 && stack.Count > 0)
+			result.Add(stack[stack.Count - 1]);
+
+		return result;
+	}
+
+	static NavigationAnimationKind DetermineAnimation(IReadOnlyList<IView> previous, IReadOnlyList<IView> current, bool animated)
+	{
+		if (!animated)
+			return NavigationAnimationKind.None;
+
+		if (current.Count == 0)
+			return NavigationAnimationKind.None;
+
+		if (previous.Count == 0)
+			return NavigationAnimationKind.None;
+
+		var previousTop = previous[^1];
+		var currentTop = current[^1];
+
+		if (ReferenceEquals(previousTop, currentTop))
+			return NavigationAnimationKind.None;
+
+		if (current.Count > previous.Count)
+			return NavigationAnimationKind.Push;
+
+		if (current.Count < previous.Count)
+			return NavigationAnimationKind.Pop;
+
+		var previousIndex = IndexOf(previous, currentTop);
+		if (previousIndex >= 0 && previousIndex < previous.Count - 1)
+			return NavigationAnimationKind.Pop;
+
+		return NavigationAnimationKind.Replace;
+	}
+
+	static int IndexOf(IReadOnlyList<IView> stack, IView view)
+	{
+		for (var i = 0; i < stack.Count; i++)
+		{
+			if (ReferenceEquals(stack[i], view))
+				return i;
+		}
+
+		return -1;
+	}
+
+	static IPageTransition CreateSlideTransition() =>
+		new PageSlide(DefaultTransitionDuration);
+
 	void UpdateModalOverlays(IReadOnlyList<IView> modalViews)
 	{
 		if (_modalLayer is null)
@@ -216,5 +303,13 @@ internal sealed class AvaloniaStackNavigationManager
 			};
 			_modalLayer.Children.Add(overlay);
 		}
+	}
+
+	enum NavigationAnimationKind
+	{
+		None,
+		Push,
+		Pop,
+		Replace
 	}
 }

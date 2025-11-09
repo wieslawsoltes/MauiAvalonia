@@ -33,6 +33,7 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 			[nameof(MauiControls.StructuredItemsView.HeaderTemplate)] = MapSupplementalContent,
 			[nameof(MauiControls.StructuredItemsView.Footer)] = MapSupplementalContent,
 			[nameof(MauiControls.StructuredItemsView.FooterTemplate)] = MapSupplementalContent,
+			[nameof(MauiControls.StructuredItemsView.ItemsLayout)] = MapItemsLayout,
 			[nameof(MauiControls.ItemsView.RemainingItemsThreshold)] = MapRemainingItemsThreshold,
 			[nameof(MauiControls.SelectableItemsView.SelectionMode)] = MapSelectionMode,
 			[nameof(MauiControls.SelectableItemsView.SelectedItem)] = MapSelectedItem,
@@ -49,6 +50,8 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 	INotifyCollectionChanged? _observedItemsSource;
 	VirtualizingStackPanel? _itemsPanel;
 	bool _suppressSelectionUpdates;
+	bool _applyItemSpacing;
+	global::Avalonia.Thickness _itemSpacingMargin = new();
 
 	protected override ListBox CreatePlatformView() =>
 		new()
@@ -62,13 +65,16 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 		base.ConnectHandler(platformView);
 		platformView.SelectionChanged += OnSelectionChanged;
 		platformView.TemplateApplied += OnTemplateApplied;
+		platformView.ContainerPrepared += OnContainerPrepared;
 		platformView.AddHandler(ScrollViewer.ScrollChangedEvent, OnScrollViewerChanged, RoutingStrategies.Bubble);
+		UpdateItemsLayout();
 	}
 
 	protected override void DisconnectHandler(ListBox platformView)
 	{
 		platformView.SelectionChanged -= OnSelectionChanged;
 		platformView.TemplateApplied -= OnTemplateApplied;
+		platformView.ContainerPrepared -= OnContainerPrepared;
 		platformView.RemoveHandler(ScrollViewer.ScrollChangedEvent, OnScrollViewerChanged);
 		DetachItemsSourceObserver();
 		_visualItems.Clear();
@@ -89,6 +95,9 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 	static void MapSupplementalContent(AvaloniaCollectionViewHandler handler, MauiControls.CollectionView view) =>
 		handler.RefreshVisualItems();
 
+	static void MapItemsLayout(AvaloniaCollectionViewHandler handler, MauiControls.CollectionView view) =>
+		handler.UpdateItemsLayout();
+
 	static void MapSelectionMode(AvaloniaCollectionViewHandler handler, MauiControls.CollectionView view) =>
 		handler.UpdateSelectionMode();
 
@@ -100,6 +109,17 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 
 	static void MapRemainingItemsThreshold(AvaloniaCollectionViewHandler handler, MauiControls.CollectionView view) =>
 		handler.TrySendRemainingItemsThreshold();
+
+	void UpdateItemsLayout()
+	{
+		if (PlatformView is null || VirtualView is null)
+			return;
+
+		ConfigureItemSpacing(VirtualView.ItemsLayout);
+		PlatformView.ItemsPanel = CreateItemsPanelTemplate(VirtualView.ItemsLayout);
+		_itemsPanel = PlatformView.ItemsPanelRoot as VirtualizingStackPanel;
+		PlatformView.InvalidateMeasure();
+	}
 
 	void UpdateItemsSource()
 	{
@@ -418,5 +438,90 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 
 		if (itemCount - 1 - lastVisible <= threshold)
 			VirtualView.SendRemainingItemsThresholdReached();
+	}
+
+	void ConfigureItemSpacing(MauiControls.IItemsLayout? layout)
+	{
+		switch (layout)
+		{
+			case MauiControls.LinearItemsLayout linear:
+				var spacing = Math.Max(0, linear.ItemSpacing);
+				_applyItemSpacing = spacing > 0;
+				if (_applyItemSpacing)
+				{
+					var half = spacing / 2;
+					_itemSpacingMargin = linear.Orientation == MauiControls.ItemsLayoutOrientation.Horizontal
+						? new global::Avalonia.Thickness(half, 0, half, 0)
+						: new global::Avalonia.Thickness(0, half, 0, half);
+				}
+				else
+				{
+					_itemSpacingMargin = default;
+				}
+				break;
+			case MauiControls.GridItemsLayout grid:
+				var horizontal = Math.Max(0, grid.HorizontalItemSpacing);
+				var vertical = Math.Max(0, grid.VerticalItemSpacing);
+				_applyItemSpacing = horizontal > 0 || vertical > 0;
+				if (_applyItemSpacing)
+				{
+					_itemSpacingMargin = new global::Avalonia.Thickness(horizontal / 2, vertical / 2, horizontal / 2, vertical / 2);
+				}
+				else
+				{
+					_itemSpacingMargin = default;
+				}
+				break;
+			default:
+				_applyItemSpacing = false;
+				_itemSpacingMargin = default;
+				break;
+		}
+	}
+
+	FuncTemplate<Panel> CreateItemsPanelTemplate(MauiControls.IItemsLayout? layout)
+	{
+		var target = layout ?? new MauiControls.LinearItemsLayout(MauiControls.ItemsLayoutOrientation.Vertical);
+
+		return new FuncTemplate<Panel>(() =>
+		{
+			return target switch
+			{
+				MauiControls.LinearItemsLayout linear => CreateLinearPanel(linear),
+				MauiControls.GridItemsLayout grid => CreateGridPanel(grid),
+				_ => CreateLinearPanel(new MauiControls.LinearItemsLayout(MauiControls.ItemsLayoutOrientation.Vertical))
+			};
+		});
+	}
+
+	Panel CreateLinearPanel(MauiControls.LinearItemsLayout layout)
+	{
+		var panel = new VirtualizingStackPanel
+		{
+			Orientation = layout.Orientation == MauiControls.ItemsLayoutOrientation.Horizontal
+				? Orientation.Horizontal
+				: Orientation.Vertical
+		};
+
+		return panel;
+	}
+
+	Panel CreateGridPanel(MauiControls.GridItemsLayout layout)
+	{
+		var span = Math.Max(1, layout.Span);
+		return new UniformGrid
+		{
+			Columns = layout.Orientation == MauiControls.ItemsLayoutOrientation.Vertical ? span : 0,
+			Rows = layout.Orientation == MauiControls.ItemsLayoutOrientation.Horizontal ? span : 0
+		};
+	}
+
+	void OnContainerPrepared(object? sender, ContainerPreparedEventArgs e)
+	{
+		if (!_applyItemSpacing)
+			return;
+
+		if (e.Container is Control control)
+			control.Margin = _itemSpacingMargin;
 	}
 }

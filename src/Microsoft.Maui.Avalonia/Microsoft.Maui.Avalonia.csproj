@@ -13,14 +13,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.1.3" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.1.3" />
+    <PackageReference Include="Avalonia" Version="11.3.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.1" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.1" />
+    <PackageReference Include="BlazorWebView.Avalonia" Version="11.0.0.1" />
     <PackageReference Include="CommunityToolkit.Maui" Version="8.0.0" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="4.1.2" />
+    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.9.4" />
+    <PackageReference Include="Mapsui.Avalonia" Version="5.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="8.0.91" ExcludeAssets="build;buildTransitive" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Maui.Controls.Foldable" Version="8.0.91" />
+    <PackageReference Include="Microsoft.Maui.Controls.Maps" Version="8.0.91" />
     <PackageReference Include="Microsoft.Maui.Core" Version="8.0.91" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.91" />
     <PackageReference Include="Microsoft.Maui.Graphics.Skia" Version="8.0.91" />
+    <PackageReference Include="VideoLAN.LibVLC.Mac" Version="3.1.3.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+    <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
   </ItemGroup>
+
+  <Target Name="StaticWebAssetsPrepareForRun" />
+  <Target Name="StaticWebAssetsPrepareForPublish" />
+  <Target Name="LoadStaticWebAssetsPublishManifest" />
 
 </Project>

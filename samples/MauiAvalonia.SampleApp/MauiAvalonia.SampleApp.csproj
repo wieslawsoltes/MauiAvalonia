@@ -69,6 +69,11 @@
 		<ProjectReference Include="..\..\src\Microsoft.Maui.Avalonia\Microsoft.Maui.Avalonia.csproj" />
 	</ItemGroup>
 
+	<ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+		<PackageReference Include="WebView.Avalonia.Desktop" Version="11.0.0.1" />
+		<PackageReference Include="BlazorWebView.Avalonia" Version="11.0.0.1" />
+	</ItemGroup>
+
 	<Target Name="CopyAvaloniaMauiAssets"
 	        AfterTargets="Build"
 	        Condition="$([System.String]::Copy('$(TargetFramework)').Contains('-')) == false">

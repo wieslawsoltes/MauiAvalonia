@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui;
+using Microsoft.Maui.Avalonia;
 using Microsoft.Maui.Avalonia.Handlers;
 using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Avalonia.Navigation;
@@ -32,6 +33,8 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 	IMauiContext? _applicationContext;
 	IServiceProvider? _services;
 	IClassicDesktopStyleApplicationLifetime? _desktopLifetime;
+	ISingleViewApplicationLifetime? _singleViewLifetime;
+	WindowRegistration? _singleViewRegistration;
 
 	public void AttachLifetime(AvaloniaApplication lifetimeOwner, IApplication mauiApp, IMauiContext applicationContext)
 	{
@@ -50,22 +53,30 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 				break;
 
 			case ISingleViewApplicationLifetime singleView:
-				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnStartup>(
-					_services,
-					del => del(lifetimeOwner, new ControlledApplicationLifetimeStartupEventArgs(Array.Empty<string>())));
-
-				singleView.MainView ??= new TextBlock
+				_singleViewLifetime = singleView;
+				InvokeOnUiThread(() =>
 				{
-					Text = "Avalonia backend initialization is still in progress.",
-					HorizontalAlignment = AvaloniaHorizontalAlignment.Center,
-					VerticalAlignment = AvaloniaVerticalAlignment.Center
-				};
+					LifecycleInvoker.Invoke<AvaloniaLifecycle.OnStartup>(
+						_services,
+						del => del(lifetimeOwner, new ControlledApplicationLifetimeStartupEventArgs(Array.Empty<string>())));
+
+					if (singleView.MainView is null)
+						singleView.MainView = CreatePlaceholderView("Avalonia backend initialization is still in progress.");
+
+					EnsureSingleViewHost();
+				});
 				break;
 		}
 	}
 
 	public void OpenWindow(IApplication application, OpenWindowRequest? request)
 	{
+		if (_singleViewLifetime is not null)
+		{
+			Console.Error.WriteLine("[AvaloniaWindowHost] Additional windows are not supported when using ISingleViewApplicationLifetime.");
+			return;
+		}
+
 		if (_desktopLifetime is null)
 			return;
 
@@ -76,6 +87,53 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 		{
 			var registration = CreateWindowInternal(request);
 			registration?.PlatformWindow.Show();
+		});
+	}
+
+	public IEnumerable<IWindow> EnumerateWindows()
+	{
+		lock (_registrationLock)
+		{
+			return new List<IWindow>(_windowRegistrations.Keys);
+		}
+	}
+
+	public bool TryGetPlatformWindow(IWindow window, out AvaloniaWindow platformWindow)
+	{
+		if (window is not null && TryGetWindowRegistration(window, out var registration))
+		{
+			platformWindow = registration.PlatformWindow;
+			return true;
+		}
+
+		platformWindow = null!;
+		return false;
+	}
+
+	public void CloseWindow(IWindow window)
+	{
+		if (window is null)
+			return;
+
+		InvokeOnUiThread(() =>
+		{
+			if (!TryGetWindowRegistration(window, out var registration))
+				return;
+
+			if (_singleViewRegistration == registration)
+			{
+				CloseSingleViewRegistration(registration);
+				return;
+			}
+
+			try
+			{
+				registration.PlatformWindow.Close();
+			}
+			catch (Exception ex)
+			{
+				Console.Error.WriteLine($"[AvaloniaWindowHost] Failed to close window: {ex}");
+			}
 		});
 	}
 
@@ -125,7 +183,62 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 		});
 	}
 
-	WindowRegistration? CreateWindowInternal(OpenWindowRequest? request)
+	void EnsureSingleViewHost()
+	{
+		if (_singleViewLifetime is null || _singleViewRegistration is not null)
+			return;
+
+		var registration = CreateWindowInternal(request: null, attachNavigationRoot: false);
+		if (registration is null)
+		{
+			Console.Error.WriteLine("[AvaloniaWindowHost] Failed to materialize the MAUI window for ISingleViewApplicationLifetime.");
+			return;
+		}
+
+		RegisterWindow(registration, trackPlatformEvents: false);
+		_singleViewRegistration = registration;
+
+		if (registration.NavigationRoot is { } navigationRoot)
+		{
+			_singleViewLifetime.MainView = navigationRoot.RootView;
+		}
+		else
+		{
+			_singleViewLifetime.MainView = CreatePlaceholderView("Avalonia backend: navigation root was not resolved.");
+		}
+
+	}
+
+	bool TryGetWindowRegistration(IWindow window, out WindowRegistration registration)
+	{
+		lock (_registrationLock)
+		{
+			if (_windowRegistrations.TryGetValue(window, out var existing))
+			{
+				registration = existing;
+				return true;
+			}
+		}
+
+		registration = default!;
+		return false;
+	}
+
+	void CloseSingleViewRegistration(WindowRegistration registration)
+	{
+		_singleViewRegistration = null;
+
+		if (_singleViewLifetime is not null)
+			_singleViewLifetime.MainView = CreatePlaceholderView("Avalonia backend: window closed.");
+
+		lock (_registrationLock)
+			_windowRegistrations.Remove(registration.MauiWindow);
+
+		LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowDestroyed>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+		registration.Dispose();
+	}
+
+	WindowRegistration? CreateWindowInternal(OpenWindowRequest? request, bool attachNavigationRoot = true)
 	{
 		if (_mauiApplication is null || _applicationContext is null)
 			return null;
@@ -137,19 +250,15 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 			Title = "MAUI on Avalonia (preview)"
 		};
 
-		var windowScope = _applicationContext.Services.CreateScope();
+		var windowContext = _applicationContext.MakeWindowScope(avaloniaWindow, out var windowScope);
 		try
 		{
-			var windowContext = new MauiContext(windowScope.ServiceProvider);
-			MauiServiceUtilities.InitializeScopedServices(windowScope.ServiceProvider);
-
 			var activationState = request?.State is IPersistedState persistedState
 				? new ActivationState(windowContext, persistedState)
 				: new ActivationState(windowContext);
 
 			var window = _mauiApplication.CreateWindow(activationState);
 			MauiContextAccessor.TryAddSpecific(windowContext, window);
-			MauiContextAccessor.TryAddWeakSpecific(windowContext, avaloniaWindow);
 
 			try
 			{
@@ -162,7 +271,8 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 			}
 
 			var navigationRoot = windowScope.ServiceProvider.GetService<IAvaloniaNavigationRoot>();
-			navigationRoot?.Attach(avaloniaWindow);
+			if (attachNavigationRoot)
+				navigationRoot?.Attach(avaloniaWindow);
 			ApplyInitialContent(window, windowContext, navigationRoot);
 
 			var registration = new WindowRegistration(window, avaloniaWindow, navigationRoot, windowScope);
@@ -177,31 +287,56 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 		}
 	}
 
-	void RegisterWindow(WindowRegistration registration)
+	void RegisterWindow(WindowRegistration registration, bool trackPlatformEvents = true)
 	{
-		void OnOpened(object? sender, EventArgs e)
+		if (trackPlatformEvents)
 		{
-			registration.PlatformWindow.Opened -= OnOpened;
-			LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowCreated>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
-		}
+			void OnOpened(object? sender, EventArgs e)
+			{
+				registration.PlatformWindow.Opened -= OnOpened;
+				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowCreated>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+			}
 
-		void OnClosed(object? sender, EventArgs e)
-		{
-			registration.PlatformWindow.Closed -= OnClosed;
-			registration.PlatformWindow.Opened -= OnOpened;
+			void OnActivated(object? sender, EventArgs e) =>
+				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowActivated>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+
+			void OnDeactivated(object? sender, EventArgs e) =>
+				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowDeactivated>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+
+			void OnThemeVariantChanged(object? sender, EventArgs e) =>
+				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowThemeChanged>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow, e));
+
+			void OnClosed(object? sender, EventArgs e)
+			{
+				registration.PlatformWindow.Closed -= OnClosed;
+				registration.PlatformWindow.Opened -= OnOpened;
+				registration.PlatformWindow.Activated -= OnActivated;
+				registration.PlatformWindow.Deactivated -= OnDeactivated;
+				registration.PlatformWindow.ActualThemeVariantChanged -= OnThemeVariantChanged;
+
+				lock (_registrationLock)
+					_windowRegistrations.Remove(registration.MauiWindow);
+
+				LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowDestroyed>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+				registration.Dispose();
+			}
+
+			registration.PlatformWindow.Opened += OnOpened;
+			registration.PlatformWindow.Closed += OnClosed;
+			registration.PlatformWindow.Activated += OnActivated;
+			registration.PlatformWindow.Deactivated += OnDeactivated;
+			registration.PlatformWindow.ActualThemeVariantChanged += OnThemeVariantChanged;
 
 			lock (_registrationLock)
-				_windowRegistrations.Remove(registration.MauiWindow);
-
-			LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowDestroyed>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
-			registration.Dispose();
+				_windowRegistrations[registration.MauiWindow] = registration;
 		}
+		else
+		{
+			lock (_registrationLock)
+				_windowRegistrations[registration.MauiWindow] = registration;
 
-		registration.PlatformWindow.Opened += OnOpened;
-		registration.PlatformWindow.Closed += OnClosed;
-
-		lock (_registrationLock)
-			_windowRegistrations[registration.MauiWindow] = registration;
+			LifecycleInvoker.Invoke<AvaloniaLifecycle.OnWindowCreated>(_services, del => del(_lifetimeOwner!, registration.PlatformWindow));
+		}
 	}
 
 	static void InvokeOnUiThread(Action callback)
@@ -270,4 +405,14 @@ internal sealed class AvaloniaWindowHost : IAvaloniaWindowHost
 			navigationRoot.SetPlaceholder("Avalonia backend: waiting for MAUI to provide window content.");
 		}
 	}
+
+	static Control CreatePlaceholderView(string message) =>
+		new TextBlock
+		{
+			Text = message,
+			TextWrapping = TextWrapping.Wrap,
+			HorizontalAlignment = AvaloniaHorizontalAlignment.Center,
+			VerticalAlignment = AvaloniaVerticalAlignment.Center,
+			Margin = new AvaloniaThickness(32)
+		};
 }

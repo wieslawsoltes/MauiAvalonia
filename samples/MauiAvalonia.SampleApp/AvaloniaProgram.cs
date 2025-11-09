@@ -2,6 +2,7 @@
 using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.WebView.Desktop;
 
 namespace MauiAvalonia.SampleApp;
 
@@ -14,6 +15,7 @@ internal static class AvaloniaProgram
 	public static AppBuilder BuildAvaloniaApp() =>
 		AppBuilder.Configure<AvaloniaHostApplication>()
 			.UsePlatformDetect()
+			.UseDesktopWebView()
 			.LogToTrace();
 }
 #endif

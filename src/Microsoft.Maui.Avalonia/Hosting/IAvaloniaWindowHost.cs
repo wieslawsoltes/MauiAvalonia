@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Avalonia;
 using Microsoft.Maui.Handlers;
 using AvaloniaApplication = Avalonia.Application;
+using AvaloniaWindow = Avalonia.Controls.Window;
 
 namespace Microsoft.Maui.Hosting;
 
@@ -21,4 +23,22 @@ public interface IAvaloniaWindowHost
 	/// <param name="application">The MAUI application requesting the window.</param>
 	/// <param name="request">Optional window request metadata (persisted state, routing id, etc.).</param>
 	void OpenWindow(Microsoft.Maui.IApplication application, OpenWindowRequest? request);
+
+	/// <summary>
+	/// Attempts to close the specified MAUI <paramref name="window"/> and dispose its scope.
+	/// </summary>
+	void CloseWindow(Microsoft.Maui.IWindow window);
+
+	/// <summary>
+	/// Enumerates the currently tracked MAUI windows.
+	/// </summary>
+	IEnumerable<Microsoft.Maui.IWindow> EnumerateWindows();
+
+	/// <summary>
+	/// Retrieves the Avalonia platform window for the supplied MAUI <paramref name="window"/>.
+	/// </summary>
+	/// <param name="window">The MAUI window associated with the platform window.</param>
+	/// <param name="platformWindow">The resulting Avalonia window instance, if found.</param>
+	/// <returns><c>true</c> if the mapping was resolved; otherwise, <c>false</c>.</returns>
+	bool TryGetPlatformWindow(Microsoft.Maui.IWindow window, out AvaloniaWindow platformWindow);
 }

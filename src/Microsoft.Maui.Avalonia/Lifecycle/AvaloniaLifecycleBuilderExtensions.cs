@@ -31,6 +31,18 @@ public static class AvaloniaLifecycleBuilderExtensions
 	public static IAvaloniaLifecycleBuilder OnWindowDestroyed(this IAvaloniaLifecycleBuilder builder, AvaloniaLifecycle.OnWindowDestroyed del) =>
 		builder.AddLifecycleEvent(nameof(AvaloniaLifecycle.OnWindowDestroyed), del);
 
+	/// <summary>Registers a callback for Avalonia window activation.</summary>
+	public static IAvaloniaLifecycleBuilder OnWindowActivated(this IAvaloniaLifecycleBuilder builder, AvaloniaLifecycle.OnWindowActivated del) =>
+		builder.AddLifecycleEvent(nameof(AvaloniaLifecycle.OnWindowActivated), del);
+
+	/// <summary>Registers a callback for Avalonia window deactivation.</summary>
+	public static IAvaloniaLifecycleBuilder OnWindowDeactivated(this IAvaloniaLifecycleBuilder builder, AvaloniaLifecycle.OnWindowDeactivated del) =>
+		builder.AddLifecycleEvent(nameof(AvaloniaLifecycle.OnWindowDeactivated), del);
+
+	/// <summary>Registers a callback for Avalonia window theme changes.</summary>
+	public static IAvaloniaLifecycleBuilder OnWindowThemeChanged(this IAvaloniaLifecycleBuilder builder, AvaloniaLifecycle.OnWindowThemeChanged del) =>
+		builder.AddLifecycleEvent(nameof(AvaloniaLifecycle.OnWindowThemeChanged), del);
+
 	/// <summary>Registers a callback for theme change notifications.</summary>
 	public static IAvaloniaLifecycleBuilder OnThemeChanged(this IAvaloniaLifecycleBuilder builder, AvaloniaLifecycle.OnThemeChanged del) =>
 		builder.AddLifecycleEvent(nameof(AvaloniaLifecycle.OnThemeChanged), del);

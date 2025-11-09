@@ -1,5 +1,10 @@
+using System;
+using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media.Imaging;
 using Microsoft.Maui;
 using Microsoft.Maui.Avalonia.Fonts;
 using Microsoft.Maui.Avalonia.Graphics;
@@ -7,13 +12,17 @@ using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Avalonia.Platform;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Platform;
+using Microsoft.Maui.Controls;
 using AvaloniaButton = Avalonia.Controls.Button;
 
 namespace Microsoft.Maui.Avalonia.Handlers;
 
 public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton>, IButtonHandler
 {
-	static readonly IPropertyMapper<IImage, AvaloniaButtonHandler> ImageMapper = new PropertyMapper<IImage, AvaloniaButtonHandler>();
+	static readonly IPropertyMapper<IImage, AvaloniaButtonHandler> ImageMapper = new PropertyMapper<IImage, AvaloniaButtonHandler>()
+	{
+		[nameof(IImage.Source)] = MapImageSource
+	};
 
 	static readonly IPropertyMapper<ITextButton, AvaloniaButtonHandler> TextMapper = new PropertyMapper<ITextButton, AvaloniaButtonHandler>()
 	{
@@ -33,6 +42,10 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 
 	public static CommandMapper<IButton, AvaloniaButtonHandler> CommandMapper = new(ViewCommandMapper);
 
+	AvaloniaButtonContentPresenter? _contentPresenter;
+	CancellationTokenSource? _imageLoadingCts;
+	Bitmap? _currentImage;
+	PropertyChangedEventHandler? _buttonPropertyChangedHandler;
 	ImageSourcePartLoader? _imageSourcePartLoader;
 
 	public AvaloniaButtonHandler()
@@ -40,12 +53,17 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 	{
 	}
 
-	protected override AvaloniaButton CreatePlatformView() =>
-		new()
+	protected override AvaloniaButton CreatePlatformView()
+	{
+		_contentPresenter = new AvaloniaButtonContentPresenter();
+
+		return new AvaloniaButton
 		{
 			HorizontalContentAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
-			VerticalContentAlignment = global::Avalonia.Layout.VerticalAlignment.Center
+			VerticalContentAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+			Content = _contentPresenter
 		};
+	}
 
 	protected override void ConnectHandler(AvaloniaButton platformView)
 	{
@@ -53,6 +71,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		platformView.Click += OnClick;
 		platformView.PointerPressed += OnPointerPressed;
 		platformView.PointerReleased += OnPointerReleased;
+		SubscribeToButtonPropertyChanges();
 	}
 
 	protected override void DisconnectHandler(AvaloniaButton platformView)
@@ -61,6 +80,10 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		platformView.Click -= OnClick;
 		platformView.PointerPressed -= OnPointerPressed;
 		platformView.PointerReleased -= OnPointerReleased;
+		CancelImageLoading();
+		ClearImage();
+		_contentPresenter?.Reset();
+		UnsubscribeFromButtonPropertyChanges();
 	}
 
 	static void MapText(AvaloniaButtonHandler handler, ITextButton textButton)
@@ -68,7 +91,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		if (handler.PlatformView is null)
 			return;
 
-		handler.PlatformView.Content = textButton.Text ?? string.Empty;
+		handler.GetContentPresenter().UpdateText(textButton.Text ?? string.Empty);
 	}
 
 	static void MapTextColor(AvaloniaButtonHandler handler, ITextButton textButton)
@@ -93,7 +116,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		if (handler.PlatformView is null)
 			return;
 
-		TextBlock.SetLetterSpacing(handler.PlatformView, textButton.CharacterSpacing.ToAvaloniaLetterSpacing());
+		handler.GetContentPresenter().UpdateCharacterSpacing(textButton.CharacterSpacing);
 	}
 
 	static void MapPadding(AvaloniaButtonHandler handler, IButton button)
@@ -128,6 +151,9 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		handler.PlatformView.BorderBrush = button.StrokeColor?.ToAvaloniaBrush();
 	}
 
+	static void MapImageSource(AvaloniaButtonHandler handler, IImage image) =>
+		_ = handler.UpdateImageSourceAsync();
+
 	void OnClick(object? sender, global::Avalonia.Interactivity.RoutedEventArgs e) =>
 		VirtualView?.Clicked();
 
@@ -139,6 +165,120 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 
 	public ImageSourcePartLoader ImageSourceLoader =>
 		_imageSourcePartLoader ??= new ImageSourcePartLoader(new ButtonImageSourcePartSetter(this));
+
+	AvaloniaButtonContentPresenter GetContentPresenter()
+	{
+		if (_contentPresenter is null)
+		{
+			_contentPresenter = new AvaloniaButtonContentPresenter();
+			if (PlatformView is not null)
+				PlatformView.Content = _contentPresenter;
+		}
+
+		return _contentPresenter;
+	}
+
+	async Task UpdateImageSourceAsync()
+	{
+		CancelImageLoading();
+
+		if (MauiContext is null || PlatformView is null || VirtualView is not IImage image || image.Source is null)
+		{
+			await SetButtonImageAsync(null).ConfigureAwait(false);
+			return;
+		}
+
+		_imageLoadingCts = new CancellationTokenSource();
+		var token = _imageLoadingCts.Token;
+
+		try
+		{
+			var bitmap = await AvaloniaImageSourceLoader.LoadAsync(image.Source, MauiContext.Services, token).ConfigureAwait(false);
+			if (token.IsCancellationRequested)
+			{
+				bitmap?.Dispose();
+				return;
+			}
+
+			await SetButtonImageAsync(bitmap).ConfigureAwait(false);
+		}
+		catch (OperationCanceledException)
+		{
+			// no-op
+		}
+		catch
+		{
+			await SetButtonImageAsync(null).ConfigureAwait(false);
+		}
+	}
+
+	async Task SetButtonImageAsync(Bitmap? bitmap)
+	{
+		if (PlatformView is null)
+		{
+			bitmap?.Dispose();
+			return;
+		}
+
+		await AvaloniaUiDispatcher.UIThread.InvokeAsync(() =>
+		{
+			var presenter = GetContentPresenter();
+			var previous = _currentImage;
+			_currentImage = bitmap;
+			presenter.UpdateImage(bitmap);
+			previous?.Dispose();
+		});
+	}
+
+	void CancelImageLoading()
+	{
+		if (_imageLoadingCts is null)
+			return;
+
+		try
+		{
+			_imageLoadingCts.Cancel();
+		}
+		catch (ObjectDisposedException)
+		{
+		}
+		finally
+		{
+			_imageLoadingCts.Dispose();
+			_imageLoadingCts = null;
+		}
+	}
+
+	void ClearImage()
+	{
+		var bitmap = _currentImage;
+		_currentImage = null;
+		bitmap?.Dispose();
+	}
+
+	void SubscribeToButtonPropertyChanges()
+	{
+		UnsubscribeFromButtonPropertyChanges();
+
+		if (VirtualView is Microsoft.Maui.Controls.Button button)
+		{
+			_buttonPropertyChangedHandler = (sender, args) =>
+			{
+				if (args.PropertyName == nameof(Microsoft.Maui.Controls.Button.ContentLayout))
+					GetContentPresenter().UpdateLayout(button.ContentLayout);
+			};
+			button.PropertyChanged += _buttonPropertyChangedHandler;
+			GetContentPresenter().UpdateLayout(button.ContentLayout);
+		}
+	}
+
+	void UnsubscribeFromButtonPropertyChanges()
+	{
+		if (VirtualView is Microsoft.Maui.Controls.Button button && _buttonPropertyChangedHandler is not null)
+			button.PropertyChanged -= _buttonPropertyChangedHandler;
+
+		_buttonPropertyChangedHandler = null;
+	}
 
 	sealed class ButtonImageSourcePartSetter : IImageSourcePartSetter
 	{
@@ -153,7 +293,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 
 		public void SetImageSource(object? platformImage)
 		{
-			// Image content is not yet supported for the Avalonia backend.
+			// Avalonia button handler manages image loading itself.
 		}
 	}
 }

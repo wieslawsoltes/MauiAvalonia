@@ -1,5 +1,8 @@
 using System;
 using Avalonia.Threading;
+using AvaloniaBlazorWebView;
+using AvaloniaWebView;
+using Microsoft.AspNetCore.Components.WebView.Maui;
 using CommunityToolkit.Maui.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -37,6 +40,8 @@ public static class MauiAvaloniaHostBuilderExtensions
 	/// </summary>
 	public static MauiAppBuilder UseMauiAvaloniaHost(this MauiAppBuilder builder)
 	{
+		AvaloniaWebViewBuilder.Initialize(null);
+		AvaloniaBlazorWebViewBuilder.Initialize(null, AvaloniaBlazorWebViewScope.Configure, null);
 		AvaloniaToolbarMapper.EnsureInitialized();
 		DependencyService.RegisterSingleton<ISystemResourcesProvider>(new AvaloniaSystemResourcesProvider());
 
@@ -84,8 +89,18 @@ public static class MauiAvaloniaHostBuilderExtensions
 			handlers.AddHandler<IStackLayout, AvaloniaStackLayoutHandler>();
 			handlers.AddHandler<IGridLayout, AvaloniaGridLayoutHandler>();
 			handlers.AddHandler<IScrollView, AvaloniaScrollViewHandler>();
+			handlers.AddHandler<IWebView, AvaloniaWebViewHandler>();
+			TryAddControlsHandler(handlers, "Microsoft.Maui.Controls.WebView", typeof(AvaloniaWebViewHandler));
+			handlers.AddHandler<IBlazorWebView, AvaloniaBlazorWebViewHandler>();
+			TryAddControlsHandler(handlers, "Microsoft.AspNetCore.Components.WebView.Maui.BlazorWebView", typeof(AvaloniaBlazorWebViewHandler), "Microsoft.AspNetCore.Components.WebView.Maui");
 			handlers.AddHandler<MauiControls.CollectionView, AvaloniaCollectionViewHandler>();
 			handlers.AddHandler<MauiControls.CarouselView, AvaloniaCarouselViewHandler>();
+			handlers.AddHandler<Microsoft.Maui.Maps.IMap, AvaloniaMapHandler>();
+			TryAddControlsHandler(handlers, "Microsoft.Maui.Controls.Maps.Map", typeof(AvaloniaMapHandler), "Microsoft.Maui.Controls.Maps");
+			handlers.AddHandler<MauiControls.ListView, AvaloniaListViewHandler>();
+			handlers.AddHandler<IMenuFlyout, AvaloniaMenuFlyoutHandler>();
+			TryAddControlsHandler(handlers, "Microsoft.Maui.Controls.Foldable.TwoPaneView", typeof(AvaloniaTwoPaneViewHandler), "Microsoft.Maui.Controls.Foldable");
+			TryAddControlsHandler(handlers, "CommunityToolkit.Maui.Views.MediaElement", typeof(AvaloniaMediaElementHandler), "CommunityToolkit.Maui.MediaElement");
 			handlers.AddHandler<IActivityIndicator, AvaloniaActivityIndicatorHandler>();
 			handlers.AddHandler<IRefreshView, AvaloniaRefreshViewHandler>();
 			handlers.AddHandler<IPicker, AvaloniaPickerHandler>();

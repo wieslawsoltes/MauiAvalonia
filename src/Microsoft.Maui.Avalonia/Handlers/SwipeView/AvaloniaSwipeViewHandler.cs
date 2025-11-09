@@ -8,6 +8,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Platform;
+using Microsoft.Maui.Controls;
 using AvaloniaSwipeContentPresenter = global::Avalonia.Controls.Presenters.ContentPresenter;
 using AvaloniaSwipeBorder = global::Avalonia.Controls.Border;
 using AvaloniaSwipePanel = global::Avalonia.Controls.Panel;
@@ -31,7 +32,8 @@ public sealed class AvaloniaSwipeViewHandler : AvaloniaViewHandler<ISwipeView, A
 			[nameof(ISwipeView.RightItems)] = MapRightItems,
 			[nameof(ISwipeView.TopItems)] = MapTopItems,
 			[nameof(ISwipeView.BottomItems)] = MapBottomItems,
-			[nameof(ISwipeView.IsOpen)] = MapIsOpen
+			[nameof(ISwipeView.IsOpen)] = MapIsOpen,
+			[nameof(ISwipeView.SwipeTransitionMode)] = MapTransitionMode
 		};
 
 	public static readonly CommandMapper<ISwipeView, AvaloniaSwipeViewHandler> CommandMapper =
@@ -78,6 +80,7 @@ public sealed class AvaloniaSwipeViewHandler : AvaloniaViewHandler<ISwipeView, A
 		platformView.PointerMoved += OnPointerMoved;
 		platformView.PointerReleased += OnPointerReleased;
 		platformView.PointerCaptureLost += OnPointerCaptureLost;
+		UpdateTransitionMode();
 	}
 
 	protected override void DisconnectHandler(AvaloniaSwipeViewControl platformView)
@@ -113,6 +116,9 @@ static void MapBottomItems(AvaloniaSwipeViewHandler handler, ISwipeView swipeVie
 		if (!swipeView.IsOpen)
 			handler.CloseSwipe(false);
 	}
+
+	static void MapTransitionMode(AvaloniaSwipeViewHandler handler, ISwipeView swipeView) =>
+		handler.UpdateTransitionMode();
 
 	static void MapRequestOpen(AvaloniaSwipeViewHandler handler, ISwipeView swipeView, object? args)
 	{
@@ -191,6 +197,15 @@ static void MapBottomItems(AvaloniaSwipeViewHandler handler, ISwipeView swipeVie
 
 		if (host.Panel.Children.Count == 0 && _openSlot == slot)
 			CloseSwipe(false);
+	}
+
+	void UpdateTransitionMode()
+	{
+		if (PlatformView is null || VirtualView is null)
+			return;
+
+		PlatformView.TransitionMode = VirtualView.SwipeTransitionMode;
+		PlatformView.RefreshTransitionMode();
 	}
 
 	void ClearSwipeItems(OpenSwipeItem slot)
@@ -473,7 +488,9 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 	readonly AvaloniaSwipeBorder _rightOverlay;
 	readonly AvaloniaSwipeBorder _topOverlay;
 	readonly AvaloniaSwipeBorder _bottomOverlay;
+	readonly TranslateTransform _contentTransform;
 	OpenSwipeItem? _activeSlot;
+	SwipeTransitionMode _transitionMode = SwipeTransitionMode.Reveal;
 
 	public AvaloniaSwipeViewControl()
 	{
@@ -485,6 +502,8 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 			HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch,
 			VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch
 		};
+		_contentTransform = new TranslateTransform();
+		_contentPresenter.RenderTransform = _contentTransform;
 
 		_leftOverlay = CreateOverlay(global::Avalonia.Layout.HorizontalAlignment.Left, global::Avalonia.Layout.VerticalAlignment.Stretch, AvaloniaSwipeOrientation.Vertical);
 		_rightOverlay = CreateOverlay(global::Avalonia.Layout.HorizontalAlignment.Right, global::Avalonia.Layout.VerticalAlignment.Stretch, AvaloniaSwipeOrientation.Vertical);
@@ -508,6 +527,19 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 	public void SetContent(global::Avalonia.Controls.Control? control) =>
 		_contentPresenter.Content = control;
 
+	public SwipeTransitionMode TransitionMode
+	{
+		get => _transitionMode;
+		set
+		{
+			if (_transitionMode == value)
+				return;
+
+			_transitionMode = value;
+			UpdateContentTransform();
+		}
+	}
+
 	public bool ShowOverlay(OpenSwipeItem slot)
 	{
 		if (!HasItems(slot))
@@ -518,6 +550,7 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 
 		_activeSlot = slot;
 		UpdateOverlayVisibility();
+		UpdateContentTransform();
 		return true;
 	}
 
@@ -525,6 +558,7 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 	{
 		_activeSlot = null;
 		UpdateOverlayVisibility();
+		UpdateContentTransform();
 	}
 
 	bool HasItems(OpenSwipeItem slot) =>
@@ -545,6 +579,69 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 		_bottomOverlay.IsVisible = _activeSlot == OpenSwipeItem.BottomItems && BottomItemsHost.Children.Count > 0;
 	}
 
+	void UpdateContentTransform()
+	{
+		if (_transitionMode != SwipeTransitionMode.Drag || _activeSlot is null)
+		{
+			_contentTransform.X = 0;
+			_contentTransform.Y = 0;
+			return;
+		}
+
+		var extent = GetOverlayExtent(_activeSlot.Value);
+		switch (_activeSlot.Value)
+		{
+			case OpenSwipeItem.LeftItems:
+				_contentTransform.X = extent;
+				_contentTransform.Y = 0;
+				break;
+			case OpenSwipeItem.RightItems:
+				_contentTransform.X = -extent;
+				_contentTransform.Y = 0;
+				break;
+			case OpenSwipeItem.TopItems:
+				_contentTransform.X = 0;
+				_contentTransform.Y = extent;
+				break;
+			case OpenSwipeItem.BottomItems:
+				_contentTransform.X = 0;
+				_contentTransform.Y = -extent;
+				break;
+			default:
+				_contentTransform.X = 0;
+				_contentTransform.Y = 0;
+				break;
+		}
+	}
+
+	double GetOverlayExtent(OpenSwipeItem slot)
+	{
+		var panel = slot switch
+		{
+			OpenSwipeItem.LeftItems => LeftItemsHost,
+			OpenSwipeItem.RightItems => RightItemsHost,
+			OpenSwipeItem.TopItems => TopItemsHost,
+			OpenSwipeItem.BottomItems => BottomItemsHost,
+			_ => null
+		};
+
+		if (panel is null)
+			return 0;
+
+		if (slot == OpenSwipeItem.LeftItems || slot == OpenSwipeItem.RightItems)
+		{
+			if (panel.Bounds.Width > 0)
+				return panel.Bounds.Width;
+			return panel.DesiredSize.Width;
+		}
+		else
+		{
+			if (panel.Bounds.Height > 0)
+				return panel.Bounds.Height;
+			return panel.DesiredSize.Height;
+		}
+	}
+
 	static AvaloniaSwipeBorder CreateOverlay(global::Avalonia.Layout.HorizontalAlignment horizontalAlignment, global::Avalonia.Layout.VerticalAlignment verticalAlignment, AvaloniaSwipeOrientation orientation) =>
 		new()
 		{
@@ -559,4 +656,6 @@ public sealed class AvaloniaSwipeViewControl : AvaloniaGrid
 				Spacing = 8
 			}
 		};
+
+	internal void RefreshTransitionMode() => UpdateContentTransform();
 }

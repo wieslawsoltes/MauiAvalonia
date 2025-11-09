@@ -7,8 +7,10 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Microsoft.Maui;
 using Microsoft.Maui.Avalonia.Handlers;
+using Microsoft.Maui.Controls;
 using AvaloniaMenuItem = Avalonia.Controls.MenuItem;
 using AvaloniaSeparator = Avalonia.Controls.Separator;
+using MauiMenuItem = Microsoft.Maui.Controls.MenuItem;
 
 namespace Microsoft.Maui.Avalonia.Navigation;
 
@@ -93,6 +95,9 @@ internal static class AvaloniaMenuBuilder
 			menuItem.Click += (_, __) => element.Clicked();
 		}
 
+		if (element is MauiMenuItem controlsMenuItem && controlsMenuItem.IsDestructive)
+			menuItem.Foreground = Brushes.OrangeRed;
+
 		TrySetIconAsync(menuItem, element, context);
 
 		return menuItem;
@@ -121,12 +126,12 @@ internal static class AvaloniaMenuBuilder
 			if (bitmap is null)
 				return;
 
-				await AvaloniaUiDispatcher.UIThread.InvokeAsync(() =>
+			await AvaloniaUiDispatcher.UIThread.InvokeAsync(() =>
+			{
+				menuItem.Icon = new global::Avalonia.Controls.Image
 				{
-					menuItem.Icon = new global::Avalonia.Controls.Image
-					{
-						Source = bitmap,
-						Width = 16,
+					Source = bitmap,
+					Width = 16,
 					Height = 16,
 					Stretch = global::Avalonia.Media.Stretch.Uniform
 				};

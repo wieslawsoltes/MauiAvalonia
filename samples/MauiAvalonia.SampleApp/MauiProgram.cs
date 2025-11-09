@@ -12,6 +12,7 @@ public static class MauiProgram
 			.UseMauiApp<App>()
 			.UseMauiAvaloniaHost()
 			.UseMauiCommunityToolkit()
+			.UseMauiCommunityToolkitMediaElement()
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

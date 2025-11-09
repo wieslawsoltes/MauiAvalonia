@@ -50,7 +50,16 @@ public class AvaloniaApplicationHandler : ElementHandler<IApplication, AvaloniaA
 
 	static void MapCloseWindow(AvaloniaApplicationHandler handler, IApplication application, object? args)
 	{
-		if (args is IWindow window && window.Handler?.PlatformView is AvaloniaWindowControl platformWindow)
+		if (args is not IWindow window)
+			return;
+
+		if (handler.MauiContext?.Services.GetService<IAvaloniaWindowHost>() is { } windowHost)
+		{
+			windowHost.CloseWindow(window);
+			return;
+		}
+
+		if (window.Handler?.PlatformView is AvaloniaWindowControl platformWindow)
 			platformWindow.Close();
 	}
 

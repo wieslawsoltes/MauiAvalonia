@@ -1,4 +1,8 @@
 using System;
+using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -16,9 +20,12 @@ namespace Microsoft.Maui.Avalonia.Handlers;
 public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, ScrollViewer>, IScrollViewHandler
 {
 	static readonly TimeSpan ScrollFinishedDelay = TimeSpan.FromMilliseconds(120);
+	static readonly TimeSpan ScrollAnimationDuration = TimeSpan.FromMilliseconds(250);
 
 	AvaloniaBorder? _contentHost;
 	IDisposable? _scrollFinishedDisposable;
+	DispatcherTimer? _scrollAnimationTimer;
+	CancellationTokenSource? _scrollAnimationCts;
 
 	public static IPropertyMapper<IScrollView, IScrollViewHandler> Mapper =
 		new PropertyMapper<IScrollView, IScrollViewHandler>(ViewHandler.ViewMapper)
@@ -59,6 +66,7 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 		platformView.ScrollChanged -= OnScrollChanged;
 		_scrollFinishedDisposable?.Dispose();
 		_scrollFinishedDisposable = null;
+		CancelScrollAnimation();
 		base.DisconnectHandler(platformView);
 	}
 
@@ -115,14 +123,7 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 			return;
 
 		var offset = new Vector(request.HorizontalOffset, request.VerticalOffset);
-		if (request.Instant)
-		{
-			avaloniaHandler.PlatformView.Offset = offset;
-		}
-		else
-		{
-			avaloniaHandler.PlatformView.Offset = offset;
-		}
+		avaloniaHandler.RequestScroll(offset, request.Instant);
 	}
 
 	void UpdateContent()
@@ -177,6 +178,145 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 			VirtualView?.ScrollFinished();
 			_scrollFinishedDisposable = null;
 		}, ScrollFinishedDelay);
+	}
+
+	void RequestScroll(Vector offset, bool instant)
+	{
+		if (PlatformView is null)
+			return;
+
+		var target = ClampOffset(offset);
+
+		if (instant)
+		{
+			CancelScrollAnimation();
+			PlatformView.Offset = target;
+			return;
+		}
+
+		_ = AnimateScrollAsync(target);
+	}
+
+	Vector ClampOffset(Vector offset)
+	{
+		if (PlatformView is null)
+			return offset;
+
+		var extent = PlatformView.Extent;
+		var viewport = PlatformView.Viewport;
+
+		var maxX = Math.Max(0, extent.Width - viewport.Width);
+		var maxY = Math.Max(0, extent.Height - viewport.Height);
+
+		var x = double.IsFinite(maxX) ? Math.Clamp(offset.X, 0, maxX) : offset.X;
+		var y = double.IsFinite(maxY) ? Math.Clamp(offset.Y, 0, maxY) : offset.Y;
+
+		return new Vector(x, y);
+	}
+
+	async Task AnimateScrollAsync(Vector target)
+	{
+		if (PlatformView is null)
+			return;
+
+		CancelScrollAnimation();
+
+		var start = PlatformView.Offset;
+		if (start == target)
+			return;
+
+		var cts = new CancellationTokenSource();
+		_scrollAnimationCts = cts;
+		var token = cts.Token;
+		var tcs = new TaskCompletionSource();
+
+		await AvaloniaUiDispatcher.UIThread.InvokeAsync(() =>
+		{
+			if (PlatformView is null)
+			{
+				tcs.TrySetResult();
+				return;
+			}
+
+			var stopwatch = Stopwatch.StartNew();
+			_scrollAnimationTimer = new DispatcherTimer
+			{
+				Interval = TimeSpan.FromMilliseconds(16)
+			};
+
+			_scrollAnimationTimer.Tick += (_, _) =>
+			{
+				if (token.IsCancellationRequested || PlatformView is null)
+				{
+					_scrollAnimationTimer?.Stop();
+					tcs.TrySetCanceled(token);
+					return;
+				}
+
+				var progress = Math.Min(1, stopwatch.Elapsed.TotalMilliseconds / ScrollAnimationDuration.TotalMilliseconds);
+				var eased = EaseOutCubic(progress);
+				var current = new Vector(
+					Lerp(start.X, target.X, eased),
+					Lerp(start.Y, target.Y, eased));
+				PlatformView.Offset = current;
+
+				if (progress >= 1)
+				{
+					_scrollAnimationTimer?.Stop();
+					tcs.TrySetResult();
+				}
+			};
+
+			_scrollAnimationTimer.Start();
+		});
+
+		try
+		{
+			await tcs.Task.ConfigureAwait(false);
+		}
+		catch (TaskCanceledException)
+		{
+			// ignore
+		}
+		finally
+		{
+			CancelScrollAnimation();
+		}
+	}
+
+	void CancelScrollAnimation()
+	{
+		if (_scrollAnimationTimer is not null)
+		{
+			_scrollAnimationTimer.Stop();
+			_scrollAnimationTimer = null;
+		}
+
+		if (_scrollAnimationCts is not null)
+		{
+			try
+			{
+				_scrollAnimationCts.Cancel();
+			}
+			catch (ObjectDisposedException)
+			{
+			}
+			finally
+			{
+				_scrollAnimationCts.Dispose();
+				_scrollAnimationCts = null;
+			}
+		}
+	}
+
+	static double Lerp(double start, double end, double progress) =>
+		start + ((end - start) * progress);
+
+	static double EaseOutCubic(double progress)
+	{
+		var t = Math.Max(0, Math.Min(1, progress));
+		var inv = 1 - t;
+		return 1 - (inv * inv * inv);
 	}
 }
 

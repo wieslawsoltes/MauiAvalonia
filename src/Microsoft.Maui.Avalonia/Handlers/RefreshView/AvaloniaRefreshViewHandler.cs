@@ -38,19 +38,19 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 	protected override void ConnectHandler(RefreshContainer platformView)
 		{
 			base.ConnectHandler(platformView);
-			platformView.RefreshRequested += OnRefreshRequested;
-			platformView.AttachedToVisualTree += OnAttachedToVisualTree;
-			platformView.PropertyChanged += OnPlatformPropertyChanged;
+		platformView.RefreshRequested += OnRefreshRequested;
+		platformView.AttachedToVisualTree += OnAttachedToVisualTree;
+		platformView.PropertyChanged += OnPlatformPropertyChanged;
 		}
 
 	protected override void DisconnectHandler(RefreshContainer platformView)
 	{
 		base.DisconnectHandler(platformView);
-			platformView.RefreshRequested -= OnRefreshRequested;
-			platformView.AttachedToVisualTree -= OnAttachedToVisualTree;
-			platformView.PropertyChanged -= OnPlatformPropertyChanged;
-			platformView.Content = null;
-			CompleteRefresh();
+		platformView.RefreshRequested -= OnRefreshRequested;
+		platformView.AttachedToVisualTree -= OnAttachedToVisualTree;
+		platformView.PropertyChanged -= OnPlatformPropertyChanged;
+		platformView.Content = null;
+		CompleteRefresh();
 		}
 
 	static void MapContent(AvaloniaRefreshViewHandler handler, IRefreshView refreshView) =>
@@ -88,8 +88,8 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 			return;
 		}
 
-			if (_refreshDeferral is null && PlatformView.IsAttachedToVisualTree())
-				PlatformView.RequestRefresh();
+		if (_refreshDeferral is null && PlatformView.IsAttachedToVisualTree())
+			PlatformView.RequestRefresh();
 	}
 
 	void UpdateRefreshColor()
@@ -97,22 +97,19 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 		if (PlatformView?.Visualizer is null)
 			return;
 
-			if (VirtualView?.RefreshColor is Paint paint)
-			{
-				PlatformView.Visualizer.Foreground = paint.ToAvaloniaBrush();
-			}
-			else
-			{
-				PlatformView.Visualizer.Foreground = null;
-			}
+		if (VirtualView?.RefreshColor is Paint paint)
+		{
+			PlatformView.Visualizer.Foreground = paint.ToAvaloniaBrush();
 		}
+		else
+		{
+			PlatformView.Visualizer.Foreground = null;
+		}
+	}
 
 	void OnRefreshRequested(object? sender, RefreshRequestedEventArgs e)
 	{
 		CompleteRefresh();
-
-		if (!IsRefreshGestureEnabled())
-			return;
 
 		_refreshDeferral = e.GetDeferral();
 
@@ -130,23 +127,6 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 	{
 		_refreshDeferral?.Complete();
 		_refreshDeferral = null;
-	}
-
-	bool IsRefreshGestureEnabled()
-	{
-		const string propertyName = "IsRefreshEnabled";
-		if (VirtualView is null)
-			return true;
-
-		var property = VirtualView.GetType().GetProperty(propertyName);
-		if (property is not null && property.PropertyType == typeof(bool))
-		{
-			var value = property.GetValue(VirtualView);
-			if (value is bool enabled)
-				return enabled;
-		}
-
-		return true;
 	}
 
 	void OnPlatformPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)

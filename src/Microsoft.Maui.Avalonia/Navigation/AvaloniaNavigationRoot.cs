@@ -98,7 +98,9 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 	Control? _currentTitleBar;
 	bool _customChromeActive;
 	readonly List<MauiRect> _dragRectangles = new();
+	readonly List<AvaloniaRect> _scaledDragRectangles = new();
 	readonly HashSet<Control> _passthroughControls = new();
+	double _renderScaling = 1d;
 	string? _title;
 	Thickness _safeAreaInsets = new();
 
@@ -239,12 +241,16 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 	public void AttachWindow(AvaloniaWindow window)
 	{
 		_window = window ?? throw new ArgumentNullException(nameof(window));
+		_renderScaling = _window.RenderScaling;
+		UpdateScaledDragRectangles();
 		_window.PropertyChanged += OnWindowPropertyChanged;
+		_window.ScalingChanged += OnWindowScalingChanged;
 		_minimizeButton.Click += (_, _) => _window.WindowState = WindowState.Minimized;
 		_maximizeButton.Click += (_, _) => ToggleWindowState();
 		_closeButton.Click += (_, _) => _window.Close();
 		UpdateChromeState();
 		UpdateMaximizeGlyph();
+		UpdateSafeAreaInsets();
 	}
 
 	public void DetachWindow()
@@ -252,6 +258,7 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 		if (_window != null)
 		{
 			_window.PropertyChanged -= OnWindowPropertyChanged;
+			_window.ScalingChanged -= OnWindowScalingChanged;
 		}
 		_window = null;
 	}
@@ -317,6 +324,7 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 			_dragRectangles.AddRange(rectangles);
 		}
 
+		UpdateScaledDragRectangles();
 		UpdateChromeState();
 	}
 
@@ -441,7 +449,7 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 			return;
 
 		var point = e.GetPosition(this);
-		if (IsPointInDefaultTitleRegion(point))
+		if (IsPointInDefaultTitleRegion(ScalePoint(point)))
 		{
 			ToggleWindowState();
 		}
@@ -449,49 +457,50 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 
 	bool IsPointInDragRegion(AvaloniaPoint point)
 	{
-		if (IsPointInDefaultTitleRegion(point))
+		var scaledPoint = ScalePoint(point);
+
+		if (IsPointInDefaultTitleRegion(scaledPoint))
 			return true;
 
-		if (_dragRectangles.Count == 0)
+		if (_scaledDragRectangles.Count == 0)
 			return false;
 
-		foreach (var rect in _dragRectangles)
+		foreach (var rect in _scaledDragRectangles)
 		{
-			var translated = new AvaloniaRect(rect.X, rect.Y, rect.Width, rect.Height);
-			if (translated.Contains(point))
+			if (rect.Contains(scaledPoint))
 				return true;
 		}
 
 		return false;
 	}
 
-	bool IsPointInDefaultTitleRegion(AvaloniaPoint point)
+	bool IsPointInDefaultTitleRegion(AvaloniaPoint scaledPoint)
 	{
 		var origin = _titleBarBorder.TranslatePoint(default, this);
 		if (origin == null)
 			return false;
 
-		var rect = new AvaloniaRect(origin.Value, _titleBarBorder.Bounds.Size);
-		if (!rect.Contains(point))
+		var rect = ScaleRect(new AvaloniaRect(origin.Value, _titleBarBorder.Bounds.Size));
+		if (!rect.Contains(scaledPoint))
 			return false;
 
-		if (IsPointWithinControl(point, _systemButtonPanel))
+		if (IsPointWithinControl(scaledPoint, _systemButtonPanel))
 			return false;
 
-		if (_passthroughControls.Any(control => IsPointWithinControl(point, control)))
+		if (_passthroughControls.Any(control => IsPointWithinControl(scaledPoint, control)))
 			return false;
 
 		return true;
 	}
 
-	bool IsPointWithinControl(AvaloniaPoint point, Control control)
+	bool IsPointWithinControl(AvaloniaPoint scaledPoint, Control control)
 	{
 		var origin = control.TranslatePoint(default, this);
 		if (origin == null)
 			return false;
 
-		var rect = new AvaloniaRect(origin.Value, control.Bounds.Size);
-		return rect.Contains(point);
+		var rect = ScaleRect(new AvaloniaRect(origin.Value, control.Bounds.Size));
+		return rect.Contains(scaledPoint);
 	}
 
 	void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -530,4 +539,46 @@ internal sealed class AvaloniaNavigationRootView : AvaloniaGrid
 			SafeAreaChanged?.Invoke(this, EventArgs.Empty);
 		}
 	}
+
+	void OnWindowScalingChanged(object? sender, EventArgs e) => UpdateRenderScaling();
+
+	void UpdateRenderScaling()
+	{
+		var newScaling = _window?.RenderScaling ?? 1d;
+		if (Math.Abs(newScaling - _renderScaling) < 0.001)
+			return;
+
+		_renderScaling = newScaling;
+		UpdateScaledDragRectangles();
+		UpdateSafeAreaInsets();
+	}
+
+	void UpdateScaledDragRectangles()
+	{
+		_scaledDragRectangles.Clear();
+
+		if (_dragRectangles.Count == 0)
+			return;
+
+		foreach (var rect in _dragRectangles)
+			_scaledDragRectangles.Add(ScaleRect(rect));
+	}
+
+	AvaloniaPoint ScalePoint(AvaloniaPoint point) =>
+		_renderScaling == 1d ? point : new AvaloniaPoint(point.X * _renderScaling, point.Y * _renderScaling);
+
+	AvaloniaRect ScaleRect(AvaloniaRect rect)
+	{
+		if (_renderScaling == 1d)
+			return rect;
+
+		return new AvaloniaRect(
+			rect.X * _renderScaling,
+			rect.Y * _renderScaling,
+			rect.Width * _renderScaling,
+			rect.Height * _renderScaling);
+	}
+
+	AvaloniaRect ScaleRect(MauiRect rect) =>
+		ScaleRect(new AvaloniaRect(rect.X, rect.Y, rect.Width, rect.Height));
 }

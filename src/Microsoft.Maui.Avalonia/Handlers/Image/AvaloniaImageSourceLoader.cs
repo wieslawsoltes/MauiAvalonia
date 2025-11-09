@@ -5,8 +5,13 @@ using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Maui.Avalonia.Fonts;
+using Microsoft.Maui.Avalonia.Graphics;
+using Microsoft.Maui.Graphics;
 
 namespace Microsoft.Maui.Avalonia.Handlers;
 
@@ -24,6 +29,7 @@ internal static class AvaloniaImageSourceLoader
 			IFileImageSource fileImageSource => LoadFromFileAsync(fileImageSource.File, cancellationToken),
 			IStreamImageSource streamImageSource => LoadFromStreamAsync(streamImageSource, cancellationToken),
 			IUriImageSource uriImageSource => LoadFromUriAsync(uriImageSource, cancellationToken),
+			IFontImageSource fontImageSource => LoadFromFontAsync(fontImageSource, services, cancellationToken),
 			_ => Task.FromResult<Bitmap?>(null)
 		};
 	}
@@ -97,6 +103,52 @@ internal static class AvaloniaImageSourceLoader
 		}
 
 		return null;
+	}
+
+	static Task<Bitmap?> LoadFromFontAsync(IFontImageSource fontImageSource, IServiceProvider services, CancellationToken token)
+	{
+		token.ThrowIfCancellationRequested();
+
+		if (services is null)
+			return Task.FromResult<Bitmap?>(null);
+
+		if (string.IsNullOrWhiteSpace(fontImageSource.Glyph))
+			return Task.FromResult<Bitmap?>(null);
+
+		var fontManager = services.GetService<IAvaloniaFontManager>();
+		if (fontManager is null)
+			return Task.FromResult<Bitmap?>(null);
+
+		var font = fontImageSource.Font;
+		var fontFamily = fontManager.GetFontFamily(font);
+		var fontSize = font.Size > 0 ? font.Size : fontManager.GetFontSize(font, fontManager.DefaultFontSize);
+		var typeface = new Typeface(fontFamily, font.ToAvaloniaFontStyle(), font.ToAvaloniaFontWeight());
+		var culture = System.Globalization.CultureInfo.CurrentUICulture ?? System.Globalization.CultureInfo.InvariantCulture;
+		var brushColor = (fontImageSource.Color ?? Microsoft.Maui.Graphics.Colors.Black).ToAvaloniaColor();
+		var brush = new global::Avalonia.Media.SolidColorBrush(brushColor);
+			using var layout = new global::Avalonia.Media.TextFormatting.TextLayout(
+				fontImageSource.Glyph,
+				typeface,
+				fontSize,
+				brush,
+				global::Avalonia.Media.TextAlignment.Center,
+				TextWrapping.NoWrap,
+				textTrimming: TextTrimming.None,
+				flowDirection: global::Avalonia.Media.FlowDirection.LeftToRight);
+
+		var width = Math.Max(1, Math.Ceiling(layout.Width));
+		var height = Math.Max(1, Math.Ceiling(layout.Height));
+
+		var pixelSize = new PixelSize((int)width, (int)height);
+		var dpi = new Vector(96, 96);
+		var renderTarget = new RenderTargetBitmap(pixelSize, dpi);
+
+			using (var context = renderTarget.CreateDrawingContext(true))
+		{
+			layout.Draw(context, new global::Avalonia.Point(0, 0));
+		}
+
+		return Task.FromResult<Bitmap?>(renderTarget);
 	}
 
 	static async Task<Bitmap?> CreateBitmapAsync(Stream source, CancellationToken token)

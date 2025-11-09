@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Maui.Avalonia;
 using Microsoft.Maui.Avalonia.Handlers;
 using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Hosting;
@@ -47,8 +48,7 @@ public abstract class AvaloniaMauiApplication : AvaloniaApplication, IPlatformAp
 
 		_mauiApp = CreateMauiApp() ?? throw new InvalidOperationException("CreateMauiApp() must return a MauiApp instance.");
 		_rootContext = new MauiContext(_mauiApp.Services);
-		_applicationContext = _rootContext;
-		MauiContextAccessor.TryAddSpecific(_applicationContext, this);
+		_applicationContext = _rootContext.MakeApplicationScope(this);
 		_services = _applicationContext.Services;
 
 		MauiServiceUtilities.InitializeAppServices(_mauiApp);
