@@ -22,7 +22,10 @@ namespace Microsoft.Maui.Avalonia.Handlers;
 public sealed class AvaloniaTabbedViewHandler : ViewHandler<ITabbedView, TabControl>, ITabbedViewHandler
 {
 	static readonly IPropertyMapper<ITabbedView, ITabbedViewHandler> _mapper =
-		new PropertyMapper<ITabbedView, ITabbedViewHandler>(ViewHandler.ViewMapper);
+		new PropertyMapper<ITabbedView, ITabbedViewHandler>(ViewHandler.ViewMapper)
+		{
+			[nameof(IView.Background)] = MapBackground
+		};
 
 	readonly Dictionary<Page, TabRegistration> _tabs = new();
 	TabbedPage? _tabbedPage;
@@ -244,16 +247,23 @@ public sealed class AvaloniaTabbedViewHandler : ViewHandler<ITabbedView, TabCont
 
 	void UpdateBarAppearance()
 	{
-		if (_tabbedPage is null)
+		if (_tabbedPage is null || PlatformView is null)
 			return;
 
-		var background = ConvertBrush(_tabbedPage.BarBackground)
-			?? _tabbedPage.BarBackgroundColor.ToAvaloniaBrush();
-
-		if (background is not null)
-			PlatformView.Background = background;
+		if (VirtualView?.Background is not null)
+		{
+			PlatformView.Background = VirtualView.Background?.ToAvaloniaBrush();
+		}
 		else
-			PlatformView.ClearValue(TemplatedControl.BackgroundProperty);
+		{
+			var background = ConvertBrush(_tabbedPage.BarBackground)
+				?? _tabbedPage.BarBackgroundColor.ToAvaloniaBrush();
+
+			if (background is not null)
+				PlatformView.Background = background;
+			else
+				PlatformView.ClearValue(TemplatedControl.BackgroundProperty);
+		}
 
 		UpdateHeaderColors();
 	}
@@ -376,6 +386,24 @@ public sealed class AvaloniaTabbedViewHandler : ViewHandler<ITabbedView, TabCont
 			_iconImage.Source = null;
 			_iconImage.IsVisible = false;
 			_titleBlock.Text = string.Empty;
+		}
+	}
+
+	static void MapBackground(AvaloniaTabbedViewHandler handler, ITabbedView view) =>
+		handler.UpdateViewBackground();
+
+	void UpdateViewBackground()
+	{
+		if (PlatformView is null)
+			return;
+
+		if (VirtualView?.Background is not null)
+		{
+			PlatformView.Background = VirtualView.Background?.ToAvaloniaBrush();
+		}
+		else
+		{
+			UpdateBarAppearance();
 		}
 	}
 }

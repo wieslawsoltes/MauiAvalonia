@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Microsoft.Maui;
+using Microsoft.Maui.Avalonia.Accessibility;
 using Microsoft.Maui.Avalonia.Handlers;
 using Microsoft.Maui.Controls;
 using AvaloniaMenuItem = Avalonia.Controls.MenuItem;
@@ -56,6 +57,8 @@ internal static class AvaloniaMenuBuilder
 			IsEnabled = item.IsEnabled
 		};
 
+		ApplyMenuBarSemantics(menuItem, item);
+
 		foreach (var child in item)
 		{
 			menuItem.Items.Add(CreateMenuElement(child, context));
@@ -98,6 +101,7 @@ internal static class AvaloniaMenuBuilder
 		if (element is MauiMenuItem controlsMenuItem && controlsMenuItem.IsDestructive)
 			menuItem.Foreground = Brushes.OrangeRed;
 
+		ApplyMenuSemantics(menuItem, element);
 		TrySetIconAsync(menuItem, element, context);
 
 		return menuItem;
@@ -144,6 +148,18 @@ internal static class AvaloniaMenuBuilder
 		{
 			Console.Error.WriteLine($"[AvaloniaMenuBuilder] Failed to load menu icon: {ex}");
 		}
+	}
+
+	static void ApplyMenuSemantics(Control target, IMenuElement source)
+	{
+		var bindable = source as BindableObject;
+		AvaloniaSemanticNode.Apply(target, bindable, source.Text, source.Text);
+	}
+
+	static void ApplyMenuBarSemantics(Control target, IMenuBarItem source)
+	{
+		var bindable = source as BindableObject;
+		AvaloniaSemanticNode.Apply(target, bindable, source.Text, source.Text);
 	}
 
 }

@@ -12,6 +12,7 @@ using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Avalonia.Platform;
 using Microsoft.Maui.Graphics;
 using Microsoft.Maui.Handlers;
+using MauiControls = Microsoft.Maui.Controls;
 using AvaloniaBorder = Avalonia.Controls.Border;
 using AvaloniaScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility;
 
@@ -116,14 +117,13 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 
 	static void MapRequestScrollTo(IScrollViewHandler handler, IScrollView scrollView, object? args)
 	{
-		if (handler is not AvaloniaScrollViewHandler avaloniaHandler || avaloniaHandler.PlatformView is null)
+		if (handler is not AvaloniaScrollViewHandler avaloniaHandler)
 			return;
 
-		if (args is not ScrollToRequest request)
+		if (!avaloniaHandler.TryResolveScrollRequest(scrollView, args, out var offset, out var instant))
 			return;
 
-		var offset = new Vector(request.HorizontalOffset, request.VerticalOffset);
-		avaloniaHandler.RequestScroll(offset, request.Instant);
+		avaloniaHandler.RequestScroll(offset, instant);
 	}
 
 	void UpdateContent()
@@ -282,6 +282,42 @@ public class AvaloniaScrollViewHandler : AvaloniaViewHandler<IScrollView, Scroll
 		{
 			CancelScrollAnimation();
 		}
+	}
+
+	bool TryResolveScrollRequest(IScrollView scrollView, object? args, out Vector offset, out bool instant)
+	{
+		switch (args)
+		{
+			case ScrollToRequest request:
+				offset = new Vector(request.HorizontalOffset, request.VerticalOffset);
+				instant = request.Instant;
+				return true;
+			case MauiControls.ScrollToRequestedEventArgs requested:
+				offset = ResolveOffsets(scrollView, requested);
+				instant = !requested.ShouldAnimate;
+				return true;
+			default:
+				offset = default;
+				instant = true;
+				return false;
+		}
+	}
+
+	Vector ResolveOffsets(IScrollView scrollView, MauiControls.ScrollToRequestedEventArgs request)
+	{
+		double horizontal = request.ScrollX;
+		double vertical = request.ScrollY;
+
+		if (request.Mode == MauiControls.ScrollToMode.Element &&
+			request.Element is MauiControls.VisualElement element &&
+			scrollView is MauiControls.ScrollView controlsScrollView)
+		{
+			var position = controlsScrollView.GetScrollPositionForElement(element, request.Position);
+			horizontal = position.X;
+			vertical = position.Y;
+		}
+
+		return new Vector(horizontal, vertical);
 	}
 
 	void CancelScrollAnimation()

@@ -47,6 +47,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 	Bitmap? _currentImage;
 	PropertyChangedEventHandler? _buttonPropertyChangedHandler;
 	ImageSourcePartLoader? _imageSourcePartLoader;
+	ButtonImageSourcePartSetter? _buttonImageSetter;
 
 	public AvaloniaButtonHandler()
 		: base(Mapper, CommandMapper)
@@ -164,7 +165,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		VirtualView?.Released();
 
 	public ImageSourcePartLoader ImageSourceLoader =>
-		_imageSourcePartLoader ??= new ImageSourcePartLoader(new ButtonImageSourcePartSetter(this));
+		_imageSourcePartLoader ??= new ImageSourcePartLoader(GetImageSetter());
 
 	AvaloniaButtonContentPresenter GetContentPresenter()
 	{
@@ -178,13 +179,18 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		return _contentPresenter;
 	}
 
+	ButtonImageSourcePartSetter GetImageSetter() =>
+		_buttonImageSetter ??= new ButtonImageSourcePartSetter(this);
+
 	async Task UpdateImageSourceAsync()
 	{
 		CancelImageLoading();
 
+		var setter = GetImageSetter();
+
 		if (MauiContext is null || PlatformView is null || VirtualView is not IImage image || image.Source is null)
 		{
-			await SetButtonImageAsync(null).ConfigureAwait(false);
+			setter.SetImageSource(null);
 			return;
 		}
 
@@ -200,7 +206,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 				return;
 			}
 
-			await SetButtonImageAsync(bitmap).ConfigureAwait(false);
+			setter.SetImageSource(bitmap);
 		}
 		catch (OperationCanceledException)
 		{
@@ -208,7 +214,7 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 		}
 		catch
 		{
-			await SetButtonImageAsync(null).ConfigureAwait(false);
+			setter.SetImageSource(null);
 		}
 	}
 
@@ -293,7 +299,14 @@ public class AvaloniaButtonHandler : AvaloniaViewHandler<IButton, AvaloniaButton
 
 		public void SetImageSource(object? platformImage)
 		{
-			// Avalonia button handler manages image loading itself.
+			var bitmap = platformImage switch
+			{
+				Bitmap avaloniaBitmap => avaloniaBitmap,
+				IImageSourceServiceResult<Bitmap> serviceResult => serviceResult.Value,
+				_ => null
+			};
+
+			_ = _handler.SetButtonImageAsync(bitmap);
 		}
 	}
 }

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
@@ -12,9 +14,11 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Microsoft.Maui;
+using Microsoft.Maui.Avalonia.Accessibility;
 using Microsoft.Maui.Avalonia.Graphics;
 using Microsoft.Maui.Avalonia.Navigation;
 using Microsoft.Maui.Graphics;
+using Microsoft.Maui.Platform;
 using MauiControls = Microsoft.Maui.Controls;
 using MauiToolbar = Microsoft.Maui.Controls.Toolbar;
 using MauiToolbarItem = Microsoft.Maui.Controls.ToolbarItem;
@@ -49,6 +53,7 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 	readonly Dictionary<MauiToolbarItem, ToolbarItemCommand> _itemCommands = new();
 	readonly Dictionary<MauiToolbarItem, PropertyChangedEventHandler> _itemSubscriptions = new();
 	readonly Dictionary<MauiToolbarItem, Bitmap?> _iconCache = new();
+	readonly Dictionary<MauiToolbarItem, ToolbarItemIconLoader> _iconLoaders = new();
 	readonly AvaloniaThickness _buttonMargin = new(4, 0, 0, 0);
 
 	MauiToolbar? _currentToolbar;
@@ -297,6 +302,7 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 			UpdateMenuItemAccelerators(menuItem, item);
 			UpdateMenuCheckedState(menuItem, item);
 			UpdateMenuIcon(menuItem, item, GetCachedIcon(item));
+			AvaloniaSemanticNode.Apply(menuItem, item, item.Text, item.Text);
 
 			if (!_overflowFlyout.Items.Contains(menuItem))
 				_overflowFlyout.Items.Add(menuItem);
@@ -323,6 +329,7 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 
 		UpdateButtonContent(button, item, GetCachedIcon(item));
 		UpdateButtonCheckedState(button, item);
+		AvaloniaSemanticNode.Apply(button, item, item.Text, item.Text);
 		RefreshItemIcon(item);
 
 		return button;
@@ -350,9 +357,16 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 			command.Dispose();
 		_itemCommands.Clear();
 
+		foreach (var loader in _iconLoaders.Values)
+			loader.Dispose();
+		_iconLoaders.Clear();
+
+		foreach (var bitmap in _iconCache.Values)
+			bitmap?.Dispose();
+		_iconCache.Clear();
+
 		_itemButtons.Clear();
 		_overflowMenuItems.Clear();
-		_iconCache.Clear();
 		_itemsHost.Children.Clear();
 		_overflowFlyout.Items.Clear();
 	}
@@ -404,10 +418,16 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 	void UpdateTextualState(MauiToolbarItem item)
 	{
 		if (_itemButtons.TryGetValue(item, out var button))
+		{
 			UpdateButtonContent(button, item, GetCachedIcon(item));
+			AvaloniaSemanticNode.Apply(button, item, item.Text, item.Text);
+		}
 
 		if (_overflowMenuItems.TryGetValue(item, out var menuItem))
+		{
 			menuItem.Header = item.Text;
+			AvaloniaSemanticNode.Apply(menuItem, item, item.Text, item.Text);
+		}
 	}
 
 	void UpdateEnabledState(MauiToolbarItem item)
@@ -560,16 +580,16 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 
 		if (item.IconImageSource is null)
 		{
+			if (_iconLoaders.TryGetValue(item, out var loader))
+				loader.Cancel();
+
 			UpdateIconCache(item, null);
 			ApplyIconToVisuals(item, null);
 			return;
 		}
 
-		LoadImage(item.IconImageSource, bitmap =>
-		{
-			UpdateIconCache(item, bitmap);
-			ApplyIconToVisuals(item, bitmap);
-		});
+		var iconLoader = GetOrCreateIconLoader(item);
+		iconLoader.Load(_context.Services, item.IconImageSource);
 	}
 
 	void ApplyIconToVisuals(MauiToolbarItem item, Bitmap? bitmap)
@@ -581,11 +601,49 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 			UpdateMenuIcon(menuItem, item, bitmap);
 	}
 
-	void UpdateIconCache(MauiToolbarItem item, Bitmap? bitmap) =>
-		_iconCache[item] = bitmap;
+	void UpdateIconCache(MauiToolbarItem item, Bitmap? bitmap)
+	{
+		if (_iconCache.TryGetValue(item, out var existing) && !ReferenceEquals(existing, bitmap))
+			existing?.Dispose();
+
+		if (bitmap is null)
+			_iconCache.Remove(item);
+		else
+			_iconCache[item] = bitmap;
+	}
 
 	Bitmap? GetCachedIcon(MauiToolbarItem item) =>
 		_iconCache.TryGetValue(item, out var bitmap) ? bitmap : null;
+
+	ToolbarItemIconLoader GetOrCreateIconLoader(MauiToolbarItem item)
+	{
+		if (_iconLoaders.TryGetValue(item, out var loader))
+			return loader;
+
+		loader = new ToolbarItemIconLoader(this, item);
+		_iconLoaders[item] = loader;
+		return loader;
+	}
+
+	void OnToolbarIconLoaded(MauiToolbarItem item, Bitmap? bitmap)
+	{
+		void Apply()
+		{
+			if (!_itemButtons.ContainsKey(item) && !_overflowMenuItems.ContainsKey(item))
+			{
+				bitmap?.Dispose();
+				return;
+			}
+
+			UpdateIconCache(item, bitmap);
+			ApplyIconToVisuals(item, bitmap);
+		}
+
+		if (AvaloniaUiDispatcher.UIThread.CheckAccess())
+			Apply();
+		else
+			AvaloniaUiDispatcher.UIThread.Post(Apply);
+	}
 
 	static IReadOnlyList<IKeyboardAccelerator>? GetKeyboardAccelerators(MauiToolbarItem item)
 	{
@@ -669,6 +727,92 @@ internal sealed class AvaloniaToolbar : AvaloniaGrid
 		{
 			if (e.PropertyName == nameof(MauiControls.MenuItem.IsEnabled))
 				CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+		}
+	}
+
+	sealed class ToolbarItemIconLoader : IImageSourcePartSetter, IDisposable
+	{
+		readonly AvaloniaToolbar _owner;
+		readonly MauiToolbarItem _item;
+		CancellationTokenSource? _cts;
+
+		public ToolbarItemIconLoader(AvaloniaToolbar owner, MauiToolbarItem item)
+		{
+			_owner = owner;
+			_item = item;
+		}
+
+		public IElementHandler? Handler => null;
+
+		public IImageSourcePart? ImageSourcePart => _item;
+
+		public void Load(IServiceProvider services, ImageSource? source)
+		{
+			Cancel();
+
+			if (services is null || source is null)
+			{
+				SetImageSource(null);
+				return;
+			}
+
+			_cts = new CancellationTokenSource();
+			var token = _cts.Token;
+
+			_ = LoadCoreAsync(services, source, token);
+		}
+
+		async Task LoadCoreAsync(IServiceProvider services, ImageSource source, CancellationToken token)
+		{
+			try
+			{
+				var bitmap = await AvaloniaImageSourceLoader.LoadAsync(source, services, token).ConfigureAwait(false);
+				if (token.IsCancellationRequested)
+				{
+					bitmap?.Dispose();
+					return;
+				}
+
+				SetImageSource(bitmap);
+			}
+			catch
+			{
+				if (!token.IsCancellationRequested)
+					SetImageSource(null);
+			}
+		}
+
+		public void Cancel()
+		{
+			if (_cts is null)
+				return;
+
+			try
+			{
+				_cts.Cancel();
+			}
+			catch (ObjectDisposedException)
+			{
+			}
+			finally
+			{
+				_cts.Dispose();
+				_cts = null;
+			}
+		}
+
+		public void Dispose() => Cancel();
+
+		public void SetImageSource(object? platformImage)
+		{
+			var bitmap = platformImage switch
+			{
+				Bitmap avaloniaBitmap => avaloniaBitmap,
+				IImageSourceServiceResult<Bitmap> result => result.Value,
+				_ => platformImage as Bitmap
+			};
+
+			_owner.OnToolbarIconLoaded(_item, bitmap);
 		}
 	}
 }

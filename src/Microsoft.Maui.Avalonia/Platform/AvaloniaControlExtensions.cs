@@ -3,6 +3,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input.TextInput;
 using AvaloniaAutomation = Avalonia.Automation;
 using Microsoft.Maui;
+using Microsoft.Maui.Avalonia.Accessibility;
 using Microsoft.Maui.Avalonia.Fonts;
 using Microsoft.Maui.Avalonia.Graphics;
 using Microsoft.Maui.Avalonia.Internal;
@@ -124,26 +125,7 @@ internal static class AvaloniaControlExtensions
 	}
 
 	public static void ApplySemantics(this Control control, IView view)
-	{
-		var semantics = view.Semantics;
-		if (semantics is null)
-		{
-			control.ClearValue(AvaloniaAutomation.AutomationProperties.NameProperty);
-			control.ClearValue(AvaloniaAutomation.AutomationProperties.HelpTextProperty);
-			return;
-		}
-
-		if (string.IsNullOrWhiteSpace(semantics.Description))
-			control.ClearValue(AvaloniaAutomation.AutomationProperties.NameProperty);
-		else
-			AvaloniaAutomation.AutomationProperties.SetName(control, semantics.Description);
-
-		if (string.IsNullOrWhiteSpace(semantics.Hint))
-			control.ClearValue(AvaloniaAutomation.AutomationProperties.HelpTextProperty);
-		else
-			AvaloniaAutomation.AutomationProperties.SetHelpText(control, semantics.Hint);
-
-	}
+		=> AvaloniaSemanticNode.Apply(control, view);
 
 	public static void UpdateTextInputOptions(this TextBox textBox, ITextInput input, bool isMultiline, MauiReturnType? returnType = null, bool isPassword = false)
 	{

@@ -59,7 +59,7 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 	static void MapIsRefreshing(AvaloniaRefreshViewHandler handler, IRefreshView refreshView) =>
 		handler.UpdateIsRefreshing();
 
-	static void MapRefreshColor(AvaloniaRefreshViewHandler handler, IRefreshView refreshView) =>
+static void MapRefreshColor(AvaloniaRefreshViewHandler handler, IRefreshView refreshView) =>
 		handler.UpdateRefreshColor();
 
 	void UpdateContent()
@@ -128,6 +128,7 @@ public sealed class AvaloniaRefreshViewHandler : AvaloniaViewHandler<IRefreshVie
 		_refreshDeferral?.Complete();
 		_refreshDeferral = null;
 	}
+
 
 	void OnPlatformPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
 	{

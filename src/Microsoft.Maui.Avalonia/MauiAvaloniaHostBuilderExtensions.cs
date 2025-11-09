@@ -64,6 +64,12 @@ public static class MauiAvaloniaHostBuilderExtensions
 		var semanticScreenReader = new AvaloniaSemanticScreenReader();
 		AvaloniaSemanticScreenReader.TryRegisterAsDefault(semanticScreenReader);
 		builder.Services.TryAddSingleton<ISemanticScreenReader>(semanticScreenReader);
+		var haptics = new AvaloniaHapticFeedback();
+		AvaloniaHapticFeedback.TryRegisterAsDefault(haptics);
+		builder.Services.TryAddSingleton<IHapticFeedback>(haptics);
+		var vibration = new AvaloniaVibration();
+		AvaloniaVibration.TryRegisterAsDefault(vibration);
+		builder.Services.TryAddSingleton<IVibration>(vibration);
 		builder.Services.AddSingleton<Microsoft.Maui.Dispatching.IDispatcher>(sp =>
 			sp.GetRequiredService<IDispatcherProvider>().GetForCurrentThread() ??
 			new AvaloniaDispatcher(global::Avalonia.Threading.Dispatcher.UIThread));

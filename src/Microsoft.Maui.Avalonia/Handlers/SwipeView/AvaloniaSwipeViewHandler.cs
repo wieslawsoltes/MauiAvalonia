@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Microsoft.Maui;
+using Microsoft.Maui.Avalonia.Graphics;
 using Microsoft.Maui.Avalonia.Internal;
 using Microsoft.Maui.Handlers;
 using Microsoft.Maui.Platform;
@@ -33,7 +34,8 @@ public sealed class AvaloniaSwipeViewHandler : AvaloniaViewHandler<ISwipeView, A
 			[nameof(ISwipeView.TopItems)] = MapTopItems,
 			[nameof(ISwipeView.BottomItems)] = MapBottomItems,
 			[nameof(ISwipeView.IsOpen)] = MapIsOpen,
-			[nameof(ISwipeView.SwipeTransitionMode)] = MapTransitionMode
+			[nameof(ISwipeView.SwipeTransitionMode)] = MapTransitionMode,
+			[nameof(IView.Background)] = MapBackground
 		};
 
 	public static readonly CommandMapper<ISwipeView, AvaloniaSwipeViewHandler> CommandMapper =
@@ -119,6 +121,14 @@ static void MapBottomItems(AvaloniaSwipeViewHandler handler, ISwipeView swipeVie
 
 	static void MapTransitionMode(AvaloniaSwipeViewHandler handler, ISwipeView swipeView) =>
 		handler.UpdateTransitionMode();
+
+	static void MapBackground(AvaloniaSwipeViewHandler handler, ISwipeView swipeView)
+	{
+		if (handler.PlatformView is null)
+			return;
+
+		handler.PlatformView.Background = swipeView.Background?.ToAvaloniaBrush();
+	}
 
 	static void MapRequestOpen(AvaloniaSwipeViewHandler handler, ISwipeView swipeView, object? args)
 	{

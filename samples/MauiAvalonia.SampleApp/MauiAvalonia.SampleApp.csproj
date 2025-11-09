@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>net8.0;net9.0-android;net9.0-ios;net9.0-maccatalyst</TargetFrameworks>
+		<BaseTargetFrameworks>net8.0</BaseTargetFrameworks>
+		<MobileTargetFrameworks>net9.0-android;net9.0-ios;net9.0-maccatalyst</MobileTargetFrameworks>
+		<EnableMobileTargets Condition="'$(EnableMobileTargets)'==''">false</EnableMobileTargets>
+
+		<TargetFrameworks>$(BaseTargetFrameworks)</TargetFrameworks>
+		<TargetFrameworks Condition="'$(EnableMobileTargets)'=='true'">$(BaseTargetFrameworks);$(MobileTargetFrameworks)</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net9.0-windows10.0.19041.0</TargetFrameworks>
 		<!-- Uncomment to also build the tizen app. You will need to install tizen by following this: https://github.com/Samsung/Tizen.NET -->
 		<!-- <TargetFrameworks>$(TargetFrameworks);net9.0-tizen</TargetFrameworks> -->

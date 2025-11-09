@@ -46,6 +46,8 @@ const string BitmapDataFormat = "Bitmap";
 	readonly INotifyCollectionChanged? _gestureNotifier;
 	readonly List<INotifyPropertyChanged> _gestureSubscriptions = new();
 	readonly Dictionary<int, PointerContact> _activeContacts = new();
+	readonly Dictionary<int, List<LongPressTracker>> _longPressTrackers = new();
+	readonly HashSet<int> _longPressConsumedPointers = new();
 
 	MauiControls.DragGestureRecognizer? _pendingDragRecognizer;
 	AvaloniaPointerPressedEventArgs? _dragTriggerEvent;
@@ -63,6 +65,7 @@ const string BitmapDataFormat = "Bitmap";
 	{
 		_view = view ?? throw new ArgumentNullException(nameof(view));
 		_control = control ?? throw new ArgumentNullException(nameof(control));
+		FocusVisualManager.EnsureFocusVisual(_control);
 		_controlsView = view as MauiControls.View;
 		_gestureCollection = _controlsView?.GestureRecognizers;
 		if (_gestureCollection is INotifyCollectionChanged notifier)
@@ -97,6 +100,7 @@ const string BitmapDataFormat = "Bitmap";
 		_isDisposed = true;
 		UnhookControlEvents();
 		DetachGestureSubscriptions();
+		CancelAllLongPresses();
 	}
 
 	void HookControlEvents()
@@ -124,14 +128,18 @@ const string BitmapDataFormat = "Bitmap";
 		DetachDropHandlers();
 	}
 
-	void OnPointerEntered(object? sender, AvaloniaPointerEventArgs e) =>
+	void OnPointerEntered(object? sender, AvaloniaPointerEventArgs e)
+	{
+		var buttons = GetButtonsMask(e);
 		DispatchPointerGestures((view, recognizer) =>
-			recognizer.SendPointerEntered(view, relative => GetPointerPosition(relative, e), null, GetButtonsMask(e)));
+			recognizer.SendPointerEntered(view, relative => GetPointerPosition(relative, e), null, buttons));
+	}
 
 	void OnPointerExited(object? sender, AvaloniaPointerEventArgs e)
 	{
+		var buttons = GetButtonsMask(e);
 		DispatchPointerGestures((view, recognizer) =>
-			recognizer.SendPointerExited(view, relative => GetPointerPosition(relative, e), null, GetButtonsMask(e)));
+			recognizer.SendPointerExited(view, relative => GetPointerPosition(relative, e), null, buttons));
 		ResetPendingDrag();
 		if (_activeContacts.ContainsKey(e.Pointer.Id))
 			HandlePointerLost(e.Pointer.Id, canceled: true);
@@ -139,11 +147,14 @@ const string BitmapDataFormat = "Bitmap";
 
 	void OnPointerMoved(object? sender, AvaloniaPointerEventArgs e)
 	{
+		var buttons = GetButtonsMask(e);
 		DispatchPointerGestures((view, recognizer) =>
-			recognizer.SendPointerMoved(view, relative => GetPointerPosition(relative, e), null, GetButtonsMask(e)));
+			recognizer.SendPointerMoved(view, relative => GetPointerPosition(relative, e), null, buttons));
 
 		TryStartDrag(e);
 		UpdatePointerContact(e);
+		if (_activeContacts.TryGetValue(e.Pointer.Id, out var contact) && contact.ExceededTapThreshold)
+			CancelLongPress(e.Pointer.Id);
 		UpdatePanGesture();
 		UpdatePinchGesture();
 	}
@@ -156,6 +167,7 @@ const string BitmapDataFormat = "Bitmap";
 
 		TrackPointerPressed(e, buttons);
 		PreparePendingDrag(e);
+		ScheduleLongPress(e);
 	}
 
 	void OnPointerReleased(object? sender, AvaloniaPointerReleasedEventArgs e)
@@ -165,7 +177,8 @@ const string BitmapDataFormat = "Bitmap";
 			recognizer.SendPointerReleased(view, relative => GetPointerPosition(relative, e), null, buttons));
 
 		UpdatePointerContact(e);
-		OnPointerReleaseCompleted(e, buttons);
+		var longPressTriggered = ConsumeLongPress(e.Pointer.Id);
+		OnPointerReleaseCompleted(e, buttons, longPressTriggered);
 	}
 
 	void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
@@ -212,13 +225,13 @@ const string BitmapDataFormat = "Bitmap";
 		contact.Update(position, TapMovementThreshold);
 	}
 
-	void OnPointerReleaseCompleted(AvaloniaPointerReleasedEventArgs e, ButtonsMask buttons)
+	void OnPointerReleaseCompleted(AvaloniaPointerReleasedEventArgs e, ButtonsMask buttons, bool longPressTriggered)
 	{
-		HandlePointerRelease(e, buttons);
+		HandlePointerRelease(e, buttons, longPressTriggered);
 		ResetPendingDrag();
 	}
 
-	void HandlePointerRelease(AvaloniaPointerReleasedEventArgs e, ButtonsMask buttons)
+	void HandlePointerRelease(AvaloniaPointerReleasedEventArgs e, ButtonsMask buttons, bool longPressTriggered)
 	{
 		if (_dragInProgress || !_activeContacts.TryGetValue(e.Pointer.Id, out var contact))
 		{
@@ -227,7 +240,7 @@ const string BitmapDataFormat = "Bitmap";
 
 		UpdatePanGesture();
 
-		if (!_isPanning)
+		if (!_isPanning && !longPressTriggered)
 			TryHandleTap(contact, e, buttons);
 
 		_activeContacts.Remove(e.Pointer.Id);
@@ -247,6 +260,7 @@ const string BitmapDataFormat = "Bitmap";
 			return;
 
 		_activeContacts.Remove(pointerId);
+		CancelLongPress(pointerId);
 
 		if (canceled)
 		{
@@ -256,6 +270,67 @@ const string BitmapDataFormat = "Bitmap";
 				CompletePinchGesture(success: false);
 			ResetPendingDrag();
 		}
+	}
+
+	void ScheduleLongPress(AvaloniaPointerPressedEventArgs e)
+	{
+		if (!LongPressGestureProxy.IsSupported || _controlsView is null)
+			return;
+
+		var gestures = LongPressGestureProxy.GetGestures(_controlsView);
+		if (gestures.Count == 0)
+			return;
+
+		var positionProvider = new Func<IElement?, MauiPoint?>(relative => GetPointerPosition(relative, e));
+		var trackers = new List<LongPressTracker>(gestures.Count);
+
+		foreach (var gesture in gestures)
+		{
+			var tracker = new LongPressTracker(e.Pointer.Id, gesture, _controlsView, positionProvider, OnLongPressTriggered);
+			tracker.Start();
+			trackers.Add(tracker);
+		}
+
+		_longPressTrackers[e.Pointer.Id] = trackers;
+	}
+
+	void OnLongPressTriggered(int pointerId, object gesture, Func<IElement?, MauiPoint?> positionProvider)
+	{
+		if (_controlsView is null)
+			return;
+
+		_longPressConsumedPointers.Add(pointerId);
+		LongPressGestureProxy.SendLongPressed(_controlsView, gesture, positionProvider);
+	}
+
+	bool ConsumeLongPress(int pointerId)
+	{
+		var triggered = _longPressConsumedPointers.Remove(pointerId);
+		CancelLongPress(pointerId);
+		return triggered;
+	}
+
+	void CancelLongPress(int pointerId)
+	{
+		if (_longPressTrackers.Remove(pointerId, out var trackers))
+		{
+			foreach (var tracker in trackers)
+				tracker.Dispose();
+		}
+
+		_longPressConsumedPointers.Remove(pointerId);
+	}
+
+	void CancelAllLongPresses()
+	{
+		foreach (var trackers in _longPressTrackers.Values)
+		{
+			foreach (var tracker in trackers)
+				tracker.Dispose();
+		}
+
+		_longPressTrackers.Clear();
+		_longPressConsumedPointers.Clear();
 	}
 
 	void TryHandleTap(PointerContact contact, AvaloniaPointerReleasedEventArgs args, ButtonsMask buttons)

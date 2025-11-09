@@ -10,6 +10,8 @@ using Avalonia.Controls.Templates;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using AvaloniaScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility;
 using Microsoft.Maui;
 using Microsoft.Maui.Handlers;
 using MauiControls = global::Microsoft.Maui.Controls;
@@ -49,6 +51,7 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 	readonly List<object?> _dataItems = new();
 	INotifyCollectionChanged? _observedItemsSource;
 	VirtualizingStackPanel? _itemsPanel;
+	ScrollViewer? _scrollViewer;
 	bool _suppressSelectionUpdates;
 	bool _applyItemSpacing;
 	global::Avalonia.Thickness _itemSpacingMargin = new();
@@ -80,6 +83,7 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 		_visualItems.Clear();
 		_dataItems.Clear();
 		_itemsPanel = null;
+		_scrollViewer = null;
 		base.DisconnectHandler(platformView);
 	}
 
@@ -115,10 +119,51 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 		if (PlatformView is null || VirtualView is null)
 			return;
 
-		ConfigureItemSpacing(VirtualView.ItemsLayout);
-		PlatformView.ItemsPanel = CreateItemsPanelTemplate(VirtualView.ItemsLayout);
+		var layout = VirtualView.ItemsLayout;
+		ConfigureItemSpacing(layout);
+		PlatformView.ItemsPanel = CreateItemsPanelTemplate(layout);
 		_itemsPanel = PlatformView.ItemsPanelRoot as VirtualizingStackPanel;
+		UpdateScrollOrientation(layout);
 		PlatformView.InvalidateMeasure();
+	}
+
+	void UpdateScrollOrientation(MauiControls.IItemsLayout? layout)
+	{
+		var scrollViewer = EnsureScrollViewer();
+		if (scrollViewer is null)
+			return;
+
+		var orientation = ResolveOrientation(layout);
+		if (orientation == MauiControls.ItemsLayoutOrientation.Horizontal)
+		{
+			scrollViewer.HorizontalScrollBarVisibility = AvaloniaScrollBarVisibility.Auto;
+			scrollViewer.VerticalScrollBarVisibility = AvaloniaScrollBarVisibility.Disabled;
+		}
+		else
+		{
+			scrollViewer.HorizontalScrollBarVisibility = AvaloniaScrollBarVisibility.Disabled;
+			scrollViewer.VerticalScrollBarVisibility = AvaloniaScrollBarVisibility.Auto;
+		}
+	}
+
+	static MauiControls.ItemsLayoutOrientation ResolveOrientation(MauiControls.IItemsLayout? layout) =>
+		layout switch
+		{
+			MauiControls.LinearItemsLayout linear => linear.Orientation,
+			MauiControls.GridItemsLayout grid => grid.Orientation,
+			_ => MauiControls.ItemsLayoutOrientation.Vertical
+		};
+
+	ScrollViewer? EnsureScrollViewer()
+	{
+		if (_scrollViewer is not null)
+			return _scrollViewer;
+
+		if (PlatformView is null)
+			return null;
+
+		_scrollViewer = PlatformView.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+		return _scrollViewer;
 	}
 
 	void UpdateItemsSource()
@@ -335,6 +380,8 @@ public class AvaloniaCollectionViewHandler : ViewHandler<MauiControls.Collection
 	void OnTemplateApplied(object? sender, TemplateAppliedEventArgs e)
 	{
 		_itemsPanel = PlatformView?.ItemsPanelRoot as VirtualizingStackPanel;
+		_scrollViewer = PlatformView?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+		UpdateScrollOrientation(VirtualView?.ItemsLayout);
 		TrySendRemainingItemsThreshold();
 	}
 

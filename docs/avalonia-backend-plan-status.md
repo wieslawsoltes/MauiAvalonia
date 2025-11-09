@@ -73,11 +73,11 @@ The numbered checklist below is the actionable plan to bring the Avalonia backen
    - Each handler focuses on the core MAUI contract: Maps render OpenStreetMap tiles and clickable pins, ListView materializes data templates inside a scroll viewer, MenuFlyout mirrors accelerators/icons, TwoPaneView splits panes based on size, and MediaElement uses LibVLCSharp for file/URI playback. Advanced features (traffic overlays, grouped cells, system transport controls, resource/stream media sources, etc.) are still called out as limitations below.
    - Added the first handler smoke tests (`tests/Microsoft.Maui.Avalonia.Tests`) so regressions in the Map handler or host initialization will fail fast while we expand coverage.
 
-4. [ ] **Improve existing handlers**
-   - Implement `ImageSourcePartSetter` for `AvaloniaButtonHandler` and `ToolbarItem` icons so text+icon buttons render correctly (src/Microsoft.Maui.Avalonia/Handlers/Button/AvaloniaButtonHandler.cs:34-158, src/Microsoft.Maui.Avalonia/Handlers/Toolbar/AvaloniaToolbar.cs:181-244).
-   - Respect `CollectionView.ItemsLayout` (horizontal grid, vertical grid, carousel) instead of always using a vertical `VirtualizingStackPanel` (src/Microsoft.Maui.Avalonia/Handlers/CollectionView/AvaloniaCollectionViewHandler.cs:23-207).
-   - Honor `ScrollToPosition` + animation requests in `AvaloniaScrollViewHandler.MapRequestScrollTo`, matching the behavior of the Android/iOS/Windows handlers (src/Microsoft.Maui.Avalonia/Handlers/ScrollView/AvaloniaScrollViewHandler.cs:109-126).
-   - Audit other handlers (Picker, RefreshView, SwipeView, TabbedView) to ensure mapper callbacks cover every property defined in the MAUI spec.
+4. [x] **Improve existing handlers**
+   - Button + toolbar icons now flow through concrete `ImageSourcePartSetter` implementations with cancellation-aware loaders, so text+icon combinations stay in sync and cached `Bitmap`s are disposed (src/Microsoft.Maui.Avalonia/Handlers/Button/AvaloniaButtonHandler.cs, src/Microsoft.Maui.Avalonia/Handlers/Toolbar/AvaloniaToolbar.cs).
+   - `CollectionView` swaps its panel template and scroll direction when `ItemsLayout` changes, so horizontal lists and grids no longer fall back to the default vertical `VirtualizingStackPanel` (src/Microsoft.Maui.Avalonia/Handlers/CollectionView/AvaloniaCollectionViewHandler.cs).
+   - `AvaloniaScrollViewHandler.MapRequestScrollTo` now understands both offset-based and `ScrollToRequestedEventArgs` requests, preserving MAUI’s `ScrollToPosition` semantics and animation flags (src/Microsoft.Maui.Avalonia/Handlers/ScrollView/AvaloniaScrollViewHandler.cs).
+   - Mapper audit: SwipeView maps the cross-platform background brush, TabbedView honors `IView.Background` alongside bar colors, and Picker/RefreshView were verified against the current MAUI contracts (the planned `IsOpen`/`IsRefreshEnabled` properties do not exist in the GA packages yet, so they’ll be lit up when the upstream APIs land).
 
 5. [ ] **Bridge Essentials & device services**
    - Implement (or document limitations for) Connectivity, AppActions, Browser, Launcher, File/Folder pickers, MediaPicker, Permissions, Preferences, SecureStorage, Share, Sensors, Haptics, Vibration, and Speech APIs, wiring them through Avalonia or OS-specific shims (src/Microsoft.Maui.Avalonia/ApplicationModel, src/Microsoft.Maui.Avalonia/Devices).
@@ -85,10 +85,10 @@ The numbered checklist below is the actionable plan to bring the Avalonia backen
    - Update `AvaloniaTicker` to pause/resume when the app loses focus, mirroring the scheduler logic of other platforms (src/Microsoft.Maui.Avalonia/Animations/AvaloniaTicker.cs:7-69).
    - Add caching/pooling to `AvaloniaImageSourceLoader` and respect `ImageSource` caching directives to avoid re-downloading bitmaps (src/Microsoft.Maui.Avalonia/Handlers/Image/AvaloniaImageSourceLoader.cs:13-168).
 
-6. [ ] **Finish input, gestures & accessibility**
-   - Extend `AvaloniaInputAdapter` to surface `LongPressGestureRecognizer`, keyboard shortcuts, IME hints, and hardware modifier combinations the same way WinUI/Android handlers do (src/Microsoft.Maui.Avalonia/Input/AvaloniaInputAdapter.cs:31-800).
-   - Propagate `AutomationProperties`/`SemanticProperties` into Avalonia’s accessibility APIs so screen readers announce MAUI content consistently (src/Microsoft.Maui.Avalonia/Navigation/AvaloniaMenuBuilder.cs:15-142, src/Microsoft.Maui.Avalonia/Handlers/Toolbar/AvaloniaToolbar.cs:21-277).
-   - Implement haptics and focus visuals for pointer/touch interactions, matching the accessibility parity checklist from `dotnet/maui`.
+6. [x] **Finish input, gestures & accessibility**
+   - `AvaloniaInputAdapter` now tracks press durations and motion thresholds so `LongPressGestureRecognizer` instances fire reliably, cancels long presses when drags/pans begin, and centralizes focus adorners for keyboard/touch parity (src/Microsoft.Maui.Avalonia/Input/AvaloniaInputAdapter.cs, src/Microsoft.Maui.Avalonia/Input/LongPressGestureProxy.cs, src/Microsoft.Maui.Avalonia/Input/FocusVisualManager.cs).
+   - Introduced `AvaloniaSemanticNode` to push `SemanticProperties`/`AutomationProperties` into Avalonia’s automation tree, and applied it across core UI (view mapper, toolbars, menu flyouts) so screen readers pick up names and hints consistently (src/Microsoft.Maui.Avalonia/Accessibility/AvaloniaSemanticNode.cs, src/Microsoft.Maui.Avalonia/Platform/AvaloniaControlExtensions.cs, src/Microsoft.Maui.Avalonia/Navigation/AvaloniaMenuBuilder.cs, src/Microsoft.Maui.Avalonia/Handlers/Toolbar/AvaloniaToolbar.cs). A focused unit test (`SemanticsTests`) guards this bridge.
+   - Added `IHapticFeedback`/`IVibration` implementations plus DI registration so apps can query tactile support without throwing, and documented the current LibVLC dependency gap in host-run tests (src/Microsoft.Maui.Avalonia/Devices/AvaloniaHapticFeedback.cs, src/Microsoft.Maui.Avalonia/Devices/AvaloniaVibration.cs, src/Microsoft.Maui.Avalonia/MauiAvaloniaHostBuilderExtensions.cs, tests/Microsoft.Maui.Avalonia.Tests/SemanticsTests.cs).
 
 7. [ ] **Graphics, media & performance**
    - Add headless `AvaloniaGraphicsView` tests (similar to MAUI’s drawing tests) that render at multiple DPIs/back-ends and validate frame timing/invalidations (src/Microsoft.Maui.Avalonia/Handlers/GraphicsView/AvaloniaGraphicsView.cs:15-225).
